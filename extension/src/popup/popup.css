@@ -65,6 +65,8 @@ button:focus:not(:focus-visible) { outline: none; }
 .rate-limit-content { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .rate-limit-title { font-weight: 600; }
 
+.update-banner { background: var(--xp-accent-soft); color: var(--xp-accent); text-decoration: none; cursor: pointer; }
+
 .cache-summary { margin: 16px 0; padding: 14px 16px; border: 1px solid var(--xp-border); border-radius: 10px; background: var(--xp-surface); }
 .cache-summary[data-mode="community"] { border-color: var(--xp-accent-line); background: radial-gradient(ellipse at top right, var(--xp-accent-soft), transparent 75%), var(--xp-surface); }
 .cache-overview { display: flex; align-items: center; justify-content: space-between; gap: 14px; }

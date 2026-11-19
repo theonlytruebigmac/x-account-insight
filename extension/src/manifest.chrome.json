@@ -13,13 +13,15 @@
   },
 
   "permissions": [
-    "storage"
+    "storage",
+    "alarms"
   ],
 
   "host_permissions": [
     "*://*.x.com/*",
     "*://*.twitter.com/*",
-    "https://feed.syschimp.com/*"
+    "https://feed.syschimp.com/*",
+    "https://api.github.com/*"
   ],
 
   "background": {

@@ -65,6 +65,8 @@ const elements = Object.fromEntries(Object.entries({
     btnImportData: 'btn-import-data',
     importFileInput: 'import-file-input',
     importStatus: 'import-status',
+    btnCheckUpdate: 'btn-check-update',
+    updateStatus: 'update-status',
     version: 'version',
     saveStatus: 'save-status'
 }).map(([key, id]) => [key, document.getElementById(id)]));
@@ -137,6 +139,7 @@ async function initialize() {
     void loadCloudApiKeyField();
     void loadRateLimitStatus();
     startRateLimitMonitor();
+    void loadUpdateStatus();
     await loadConfiguration();
 }
 
@@ -552,6 +555,19 @@ function setupEventListeners() {
         }
     });
     if (elements.btnSyncToCloud) elements.btnSyncToCloud.addEventListener('click', handleSyncToCloud);
+    elements.btnCheckUpdate.addEventListener('click', async () => {
+        elements.btnCheckUpdate.disabled = true;
+        elements.updateStatus.textContent = 'Checking…';
+        try {
+            const response = await browserAPI.runtime.sendMessage({ type: MESSAGE_TYPES.CHECK_FOR_UPDATE });
+            if (!response?.success) throw new Error(response?.data?.error || 'Check failed');
+            renderUpdateStatus(response.data);
+        } catch (error) {
+            elements.updateStatus.textContent = `Could not check for updates: ${error.message}`;
+        } finally {
+            elements.btnCheckUpdate.disabled = false;
+        }
+    });
     elements.btnExportCache.addEventListener('click', exportBackup);
     elements.btnImportData.addEventListener('click', () => elements.importFileInput.click());
     elements.importFileInput.addEventListener('change', async event => {
@@ -613,9 +629,9 @@ async function handleImportFile(file) {
     try {
         let data;
         try { data = JSON.parse(await file.text()); }
-        catch { showStatus('Invalid JSON file. Please select an X-Posed backup.', true); return; }
+        catch { showStatus('Invalid JSON file. Please select an X Account Insight backup.', true); return; }
         if (!data || typeof data !== 'object' || Array.isArray(data) || (!data.version && !data.exportFormat)) {
-            showStatus('This does not appear to be an X-Posed backup file.', true);
+            showStatus('This does not appear to be an X Account Insight backup file.', true);
             return;
         }
         const payload = prepareBackupImport(data);
@@ -627,7 +643,7 @@ async function handleImportFile(file) {
         if (Object.hasOwn(payload, 'cloudCacheEnabled')) entries.push(`Community cache: ${payload.cloudCacheEnabled ? 'on' : 'off'}`);
         if (Array.isArray(payload.cache)) entries.push(`${payload.cache.length} cached accounts`);
         if (!confirm([
-            `Import backup from ${data.version ? `v${data.version}` : 'X-Posed'}?`,
+            `Import backup from ${data.version ? `v${data.version}` : 'X Account Insight'}?`,
             ...entries,
             'Included settings, preferences and filter lists will replace their current values. Fields missing from this backup will be kept. Cached accounts will be merged.',
             'Continue?'
@@ -655,7 +671,7 @@ async function checkWhatsNew() {
     const urlParams = new URLSearchParams(window.location.search);
     const showWhatsNew = urlParams.get('whats-new') === 'true';
     const showWelcome = urlParams.get('welcome') === 'true';
-    if (showWelcome) document.getElementById('release-heading').textContent = 'Welcome to X-Posed';
+    if (showWelcome) document.getElementById('release-heading').textContent = 'Welcome to X Account Insight';
     
     // Also check storage flag
     let storageShowWhatsNew = false;
@@ -1020,6 +1036,37 @@ function startRateLimitMonitor() {
             clearInterval(rateLimitMonitorInterval);
         }
     });
+}
+
+/**
+ * Show the last-known update status without forcing a fresh network check.
+ */
+async function loadUpdateStatus() {
+    try {
+        const response = await browserAPI.runtime.sendMessage({ type: MESSAGE_TYPES.GET_UPDATE_STATUS });
+        if (response?.success && response.data) renderUpdateStatus(response.data);
+    } catch (error) {
+        console.debug('Failed to load update status:', error);
+    }
+}
+
+function renderUpdateStatus(info) {
+    if (!info) return;
+    if (info.error) {
+        elements.updateStatus.textContent = `Could not check for updates: ${info.error}`;
+        return;
+    }
+    if (info.updateAvailable) {
+        elements.updateStatus.innerHTML = '';
+        const link = document.createElement('a');
+        link.href = info.releaseUrl;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = `Update to v${info.latestVersion}`;
+        elements.updateStatus.append('A newer version is available — ', link);
+        return;
+    }
+    elements.updateStatus.textContent = 'You\'re on the latest version.';
 }
 
 // Initialize when DOM is ready

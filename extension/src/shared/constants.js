@@ -45,7 +45,18 @@ export const STORAGE_KEYS = {
     CLOUD_SERVER_STATS: 'x_cloud_server_stats',
     CLOUD_PENDING_CONTRIBUTIONS: 'x_cloud_pending_contributions',
     LAST_VERSION: 'x_last_version',
-    WHATS_NEW_SEEN: 'x_whats_new_seen'
+    WHATS_NEW_SEEN: 'x_whats_new_seen',
+    UPDATE_INFO: 'x_update_info'
+};
+
+// Update checking (GitHub Releases)
+// Sideloaded/unpacked installs are never auto-updated by the browser itself, so this
+// just polls the repo's latest release and lets the UI point people at the download —
+// it cannot install anything on its own.
+export const UPDATE_CHECK_CONFIG = {
+    API_URL: 'https://api.github.com/repos/theonlytruebigmac/x-account-insight/releases/latest',
+    RELEASES_PAGE_URL: 'https://github.com/theonlytruebigmac/x-account-insight/releases',
+    CHECK_INTERVAL_MINUTES: 12 * 60 // Twice a day
 };
 
 // Cloud Community Cache configuration
@@ -214,7 +225,11 @@ export const MESSAGE_TYPES = {
     
     // Import/Export
     IMPORT_DATA: 'IMPORT_DATA',
-    
+
+    // Update checking
+    CHECK_FOR_UPDATE: 'CHECK_FOR_UPDATE',
+    GET_UPDATE_STATUS: 'GET_UPDATE_STATUS',
+
     // Cloud cache
     GET_CLOUD_CACHE_STATUS: 'GET_CLOUD_CACHE_STATUS',
     SET_CLOUD_CACHE_ENABLED: 'SET_CLOUD_CACHE_ENABLED',
