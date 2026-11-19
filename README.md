@@ -204,7 +204,7 @@ Real screenshots of X-Posed 4.3. Filter screens use example settings.
 
 - No X-Posed account, usage analytics or advertising. Filtering statistics remain in your browser.
 - The extension uses your existing X session. Captured authorization and CSRF headers are stored locally and sent only to X, never to the community cache.
-- The community cache is **enabled on new installs** and can be turned off under **Settings → Cloud Cache**. It shares public handles and account metadata, not post text, biographies, private messages or session headers. These records are identifiable, not anonymous.
+- The community cache is **enabled on new installs** and can be turned off under **Settings → Cloud Cache**. It shares public handles, account metadata and when that data was observed, not post text, biographies, private messages or session headers. These records are identifiable, not anonymous.
 - Profile text, links, labels and counts read from X's existing timeline responses stay in page-session memory. Turn this off under **Blocking → Behavior → Use profile details**.
 - X's labels and shared cache records can be incomplete, stale or incorrect. Check important findings against X. Rate-limit handling cannot guarantee protection from X's account enforcement.
 

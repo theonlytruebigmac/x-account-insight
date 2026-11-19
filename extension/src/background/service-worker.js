@@ -10,7 +10,7 @@
 
 import browserAPI from '../shared/browser-api.js';
 import { prepareBackupImport } from '../shared/backup.js';
-import { MESSAGE_TYPES, VERSION, STORAGE_KEYS, TIMING, affiliationWasChecked } from '../shared/constants.js';
+import { MESSAGE_TYPES, VERSION, STORAGE_KEYS, TIMING, CLOUD_CACHE_CONFIG, affiliationWasChecked } from '../shared/constants.js';
 import { userCache, filterStores, blockedAffiliations, settings, headersStorage, initializeStorage, UserCacheStorage } from '../shared/storage.js';
 import { FILTER_SOURCES } from '../shared/filter-registry.js';
 import { apiClient, API_ERROR_CODES } from './api-client.js';
@@ -372,7 +372,7 @@ function isNotFoundCached(screenName) {
 /**
  * Add a user to the "not found" cache
  */
-function cacheNotFound(screenName) {
+function cacheNotFound(screenName, expiry = Date.now() + CLOUD_CACHE_CONFIG.NOT_FOUND_TTL_MS) {
     const key = screenName.toLowerCase();
     
     // Evict oldest entries if at capacity
@@ -382,7 +382,7 @@ function cacheNotFound(screenName) {
     }
     
     notFoundCache.set(key, {
-        expiry: Date.now() + TIMING.NOT_FOUND_CACHE_EXPIRY_MS
+        expiry
     });
 }
 
@@ -425,6 +425,27 @@ function wantsRicherRecord(data, needsAffiliation = blockedAffiliations.size > 0
  * Concurrent callers for the same screen name share a single promise.
  */
 const inFlightUserFetches = new Map();
+
+/**
+ * When a usable local record lacks affiliation, the cloud is re-asked for a richer copy.
+ * Every re-render of that row would otherwise spend a lookup, so remember the attempt.
+ */
+const RICHER_RECHECK_MS = 10 * 60 * 1000;
+const richerCloudCheckedAt = new Map();
+
+function shouldAskCloudForRicher(screenName) {
+    const name = screenName.toLowerCase();
+    const now = Date.now();
+    const last = richerCloudCheckedAt.get(name);
+    if (last && now - last < RICHER_RECHECK_MS) return false;
+    richerCloudCheckedAt.set(name, now);
+    if (richerCloudCheckedAt.size > 5000) {
+        for (const [user, at] of richerCloudCheckedAt) {
+            if (now - at >= RICHER_RECHECK_MS) richerCloudCheckedAt.delete(user);
+        }
+    }
+    return true;
+}
 
 function handleFetchUserInfo(args) {
     const name = (args?.screenName || '').toLowerCase();
@@ -477,11 +498,26 @@ async function _resolveUserInfo({ screenName, csrfToken, pageContextRequired = f
     }
 
     // 2. Check cloud cache if enabled
-    if (cloudCache.isEnabled() && cloudCache.isConfigured()) {
+    if (cloudCache.isEnabled() && cloudCache.isConfigured() &&
+        (!localEntry || shouldAskCloudForRicher(screenName))) {
         try {
             const cloudResults = await cloudCache.lookup([screenName]);
             if (cloudResults.has(screenName.toLowerCase())) {
                 const cloudData = cloudResults.get(screenName.toLowerCase());
+                if (cloudData?.notFound === true) {
+                    localEntry = userCache.get(screenName) || localEntry;
+                    if (localEntry?.timestamp > cloudData.timestamp) {
+                        return { success: true, data: localEntry, cached: true, source: 'local' };
+                    }
+                    cacheNotFound(screenName, cloudData.timestamp + CLOUD_CACHE_CONFIG.NOT_FOUND_TTL_MS);
+                    return {
+                        success: false,
+                        error: 'User not found (community cache)',
+                        code: API_ERROR_CODES.NOT_FOUND,
+                        cached: true,
+                        source: 'cloud'
+                    };
+                }
 
                 // Keep whichever record actually knows about affiliation. Without this a
                 // lean cloud entry could overwrite a richer local one we already had.
@@ -528,7 +564,12 @@ async function _resolveUserInfo({ screenName, csrfToken, pageContextRequired = f
     }
 
     // Container/account credentials belong to the requesting page, never another tab.
-    if (pageContextRequired) return { success: false, code: 'PAGE_CONTEXT_REQUIRED' };
+    // cloudRecheck tells the page that if X rate-limits its own lookup, re-asking us
+    // soon is worthwhile: another user may contribute this account before X resets.
+    if (pageContextRequired) {
+        return { success: false, code: 'PAGE_CONTEXT_REQUIRED',
+            cloudRecheck: cloudCache.isEnabled() && cloudCache.isConfigured() };
+    }
 
     // 3. Fetch from X API (genuine cache miss only)
     try {
@@ -560,6 +601,7 @@ async function _resolveUserInfo({ screenName, csrfToken, pageContextRequired = f
         // Cache NOT_FOUND errors to avoid repeat lookups
         if (error.code === API_ERROR_CODES.NOT_FOUND) {
             cacheNotFound(screenName);
+            cloudCache.contributeNotFound(screenName);
         }
 
         // Issue #14: drop stale stored headers on auth failure so freshly captured
@@ -573,7 +615,11 @@ async function _resolveUserInfo({ screenName, csrfToken, pageContextRequired = f
             success: false,
             error: error.message,
             code: error.code || API_ERROR_CODES.UNKNOWN,
-            retryAfter: error.retryAfter || null
+            retryAfter: error.retryAfter || null,
+            // apiClient fails fast while X's limit is active, so an early cloud
+            // re-check (see observer retryDeadline) costs no X calls.
+            cloudRecheck: error.code === API_ERROR_CODES.RATE_LIMITED &&
+                cloudCache.isEnabled() && cloudCache.isConfigured()
         };
     }
 }
@@ -590,6 +636,15 @@ async function _resolveUserInfo({ screenName, csrfToken, pageContextRequired = f
  * hovercard if auth fails.
  */
 async function handleFetchHovercardInfo({ screenName, csrfToken, pageContextRequired = false }) {
+    if (!pageContextRequired && isNotFoundCached(screenName)) {
+        return {
+            success: false,
+            error: 'User not found (cached)',
+            code: API_ERROR_CODES.NOT_FOUND,
+            cached: true
+        };
+    }
+
     // Serve a cached entry first — but ONLY if it carries the FULL hovercard `meta`
     // (i.e. it came from a live X API fetch). Cloud-sourced entries carry just the
     // shared subset and are flagged `meta.partial`, so they fall through to a live
@@ -628,6 +683,10 @@ async function handleFetchHovercardInfo({ screenName, csrfToken, pageContextRequ
         // Return that winner too; never display or contribute a rejected reply.
         return { success: true, data: accepted, source: acceptedWrite ? 'api' : 'local' };
     } catch (error) {
+        if (error.code === API_ERROR_CODES.NOT_FOUND) {
+            cacheNotFound(screenName);
+            cloudCache.contributeNotFound(screenName);
+        }
         // Issue #14: drop stale stored headers on auth failure (the in-page fetch
         // fallback in the content script recovers the lookup).
         if (error.code === API_ERROR_CODES.UNAUTHORIZED) {
@@ -922,6 +981,7 @@ function handleGetCloudCacheStatus() {
         success: true,
         enabled: cloudCache.isEnabled(),
         configured: cloudCache.isConfigured(),
+        connection: cloudCache.getConnectionStatus(),
         stats: cloudCache.getStats()
     };
 }
@@ -969,17 +1029,20 @@ async function handleGetCloudServerStats() {
     try {
         const cached = cloudCache.getCachedServerStats?.();
 
-        // If we have cached stats, return instantly and refresh in the background
-        if (cached) {
+        // If we have cached stats and already know the connection state, return
+        // instantly and refresh in the background.
+        if (cached && cloudCache.getConnectionStatus().state !== 'unknown') {
             cloudCache.refreshServerStats?.({ timeoutMs: 15000 }).catch(() => {});
             return {
                 success: true,
                 serverStats: cached,
-                cached: true
+                cached: true,
+                connection: cloudCache.getConnectionStatus()
             };
         }
 
-        // First-time fetch: wait for a (longer) network request
+        // First fetch (or first since the key changed): wait, so the Options page can
+        // show whether the key actually works rather than just that one is set.
         const serverStats = await cloudCache.fetchServerStats({
             timeoutMs: 15000,
             allowStale: false,
@@ -989,7 +1052,8 @@ async function handleGetCloudServerStats() {
         return {
             success: true,
             serverStats,
-            cached: false
+            cached: false,
+            connection: cloudCache.getConnectionStatus()
         };
     } catch (error) {
         return {
@@ -1014,18 +1078,11 @@ async function handleSyncLocalToCloud() {
             };
         }
         
-        // Convert array to object with screenName as key
+        // Convert array to object with screenName as key. Keep `meta` (affiliation,
+        // account id, creation date) and the original timestamp — the server needs both.
         const cacheEntries = {};
-        for (const entry of cacheArray) {
-            if (entry.screenName) {
-                cacheEntries[entry.screenName] = {
-                    location: entry.location,
-                    device: entry.device,
-                    locationAccurate: entry.locationAccurate,
-                    timestamp: entry.timestamp,
-                    fromCloud: entry.fromCloud
-                };
-            }
+        for (const { screenName, ...data } of cacheArray) {
+            if (screenName) cacheEntries[screenName] = data;
         }
         
         if (Object.keys(cacheEntries).length === 0) {
@@ -1338,6 +1395,7 @@ if (browserAPI.commands?.onCommand) {
 if (runtimeNS?.runtime?.onSuspend) {
     runtimeNS.runtime.onSuspend.addListener(() => {
         try { userCache.save(true); } catch { /* best-effort */ }
+        try { cloudCache.forceSaveQueue(); } catch { /* best-effort */ }
         try { cloudCache.flushContributions(); } catch { /* best-effort */ }
         try { cloudCache.forceSaveStats(); } catch { /* best-effort */ }
     });

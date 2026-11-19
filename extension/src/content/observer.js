@@ -623,6 +623,10 @@ let filterRevision = 0;
 let latestFilterSnapshot = null;
 
 const LOOKUP_RETRY_DELAY_MS = 60000;
+// While X has us rate-limited, a row can still be answered by the community cache
+// once someone else contributes it, so re-check sooner than X's reset (which can be
+// 15 minutes away). The re-check costs no X calls: the page queue stays blocked.
+const CLOUD_RECHECK_DELAY_MS = 2 * 60 * 1000;
 
 function clearRetryState(element) {
     delete element.dataset.xRetryAfter;
@@ -644,14 +648,15 @@ function isRetryDeferred(element, currentName) {
     return Date.now() < Number(element.dataset.xRetryAfter);
 }
 
-function retryDeadline(response) {
+function retryDeadline(response, cloudRecheck = false) {
     const now = Date.now();
     const reset = typeof response?.retryAfter === 'number'
         ? response.retryAfter
         : Date.parse(response?.retryAfter);
-    return response?.code === 'RATE_LIMITED' && Number.isFinite(reset) && reset > now
-        ? reset
-        : now + LOOKUP_RETRY_DELAY_MS;
+    if (response?.code === 'RATE_LIMITED' && Number.isFinite(reset) && reset > now) {
+        return cloudRecheck ? Math.min(reset, now + CLOUD_RECHECK_DELAY_MS) : reset;
+    }
+    return now + LOOKUP_RETRY_DELAY_MS;
 }
 
 function deferElementRetry(element, screenName, retryAt) {
@@ -1597,6 +1602,7 @@ export async function processElement(element, {
             payload: { screenName, csrfToken }
         });
         if (!isCurrentProcessing()) return;
+        const cloudRecheck = response?.cloudRecheck === true;
 
         // Issue #14: if the background can't authenticate (e.g. a Firefox container
         // cookie mismatch), retry the lookup from the PAGE context — which uses the
@@ -1624,7 +1630,7 @@ export async function processElement(element, {
         if (!response?.success || !response.data) {
             const code = response?.code;
             const isTransient = code === 'RATE_LIMITED' || code === 'NETWORK_ERROR' || code === 'TIMEOUT';
-            if (isTransient) retryAt = retryDeadline(response);
+            if (isTransient) retryAt = retryDeadline(response, cloudRecheck);
             if (!isCurrentElement()) return;
             applyCurrentInfo(null);
             if (retryAt) deferElementRetry(element, screenName, retryAt);

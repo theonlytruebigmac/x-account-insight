@@ -50,6 +50,8 @@ const elements = Object.fromEntries(Object.entries({
     cloudTotalEntries: 'cloud-total-entries',
     cloudLookups: 'cloud-lookups',
     cloudHits: 'cloud-hits',
+    cloudHitRate: 'cloud-hit-rate',
+    cloudNotFoundHits: 'cloud-not-found-hits',
     cloudContributions: 'cloud-contributions',
     cloudUnconfigured: 'cloud-unconfigured',
     cloudActions: 'cloud-actions',
@@ -73,6 +75,7 @@ let blockingEditor = null;
 let pendingReleaseNavigation = null;
 let statisticsView = null;
 let cloudEnabled = false;
+let cloudConfigured = false;
 let saveStatusTimeout = null;
 let rateLimitMonitorInterval = null;
 const listState = Object.fromEntries(LISTS.map(source => [source.field, []]));
@@ -776,7 +779,7 @@ async function loadCloudCacheStatus(committedEnabled) {
         // A storage notification can precede the worker's in-memory update.
         // Its committed preference takes precedence over that older status reply.
         const enabled = typeof committedEnabled === 'boolean' ? committedEnabled : response.enabled;
-        updateCloudCacheUI(enabled, response.configured, response.stats);
+        updateCloudCacheUI(enabled, response.configured, response.stats, response.connection);
         retry?.remove();
 
         // Use the background's cached statistics. There is no cloud polling here.
@@ -810,6 +813,7 @@ async function fetchCloudServerStats() {
             type: MESSAGE_TYPES.GET_CLOUD_SERVER_STATS
         });
 
+        if (response?.connection) renderCloudConnection(response.connection);
         if (response?.success && response.serverStats) {
             if (elements.cloudTotalEntries) {
                 const total = response.serverStats.totalEntries || 0;
@@ -868,10 +872,31 @@ async function handleSyncToCloud() {
 }
 
 /**
+ * Status text for an enabled, configured cache, from what the server last told us.
+ * "Connected" is only shown once the server has actually accepted the key.
+ */
+function cloudConnectionStatus(connection) {
+    switch (connection?.state) {
+        case 'ok': return { text: 'Connected', className: 'status-enabled' };
+        case 'unauthorized': return { text: 'API key rejected', className: 'status-unconfigured' };
+        case 'unreachable': return { text: 'Server unreachable', className: 'status-unconfigured' };
+        default: return { text: 'Checking connection…', className: 'status-disabled' };
+    }
+}
+
+function renderCloudConnection(connection) {
+    if (!elements.cloudStatusIndicator || !cloudEnabled || !cloudConfigured) return;
+    const status = cloudConnectionStatus(connection);
+    elements.cloudStatusIndicator.className = `status-indicator ${status.className}`;
+    elements.cloudStatusText.textContent = status.text;
+}
+
+/**
  * Update cloud cache UI
  */
-function updateCloudCacheUI(enabled, configured, stats) {
+function updateCloudCacheUI(enabled, configured, stats, connection) {
     cloudEnabled = enabled;
+    cloudConfigured = configured;
     if (elements.optCloudCache) {
         elements.optCloudCache.disabled = false;
         elements.optCloudCache.checked = enabled;
@@ -884,8 +909,9 @@ function updateCloudCacheUI(enabled, configured, stats) {
             elements.cloudStatusIndicator.classList.add('status-unconfigured');
             elements.cloudStatusText.textContent = 'Not Configured';
         } else if (enabled) {
-            elements.cloudStatusIndicator.classList.add('status-enabled');
-            elements.cloudStatusText.textContent = 'Connected';
+            const status = cloudConnectionStatus(connection);
+            elements.cloudStatusIndicator.classList.add(status.className);
+            elements.cloudStatusText.textContent = status.text;
         } else {
             elements.cloudStatusIndicator.classList.add('status-disabled');
             elements.cloudStatusText.textContent = 'Disabled';
@@ -916,6 +942,13 @@ function updateCloudCacheUI(enabled, configured, stats) {
     if (stats) {
         if (elements.cloudLookups) elements.cloudLookups.textContent = stats.lookups || 0;
         if (elements.cloudHits) elements.cloudHits.textContent = stats.hits || 0;
+        if (elements.cloudNotFoundHits) elements.cloudNotFoundHits.textContent = stats.notFoundHits || 0;
+        const total = (stats.hits || 0) + (stats.misses || 0);
+        if (elements.cloudHitRate) {
+            elements.cloudHitRate.textContent = total
+                ? `${Math.round((stats.hits || 0) * 100 / total)}%`
+                : '—';
+        }
         if (elements.cloudContributions) elements.cloudContributions.textContent = stats.contributions || 0;
     }
 }

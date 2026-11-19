@@ -4,6 +4,24 @@ All notable changes to X-Posed will be documented in this file.
 
 ## [Unreleased]
 
+### Improvements
+
+- **Community cache does more of the work:** Lookups stay within a client-side request budget sized just under the server's limits. When that budget is briefly spent, a batch now waits a moment and keeps growing, instead of falling through to X. Recent cloud misses and affiliation re-checks are remembered, so repeated renders don't re-ask. When X rate-limits you, rows re-check the community cache after about two minutes, without waiting for X's reset and without any extra X requests.
+- **Contributions arrive reliably:**
+  - Pending uploads now survive the background restarting.
+  - Uploads are sent in server-sized batches. A server answer of `accepted: 0` is no longer counted as a contribution.
+  - Uploads pause on a rejected key and retry on server errors. They honor the server's `Retry-After`.
+  - Turning the cache off now stops anything already queued.
+  - Each upload carries its observation time, so bulk syncs and delayed uploads keep their real age.
+  - Bulk sync includes affiliation, account ID and creation date, and uses the same request budget.
+  - A richer record, such as an affiliation learned from an account card, is always shared, even if a leaner one was uploaded recently.
+- **Accurate cloud status:** **Settings → Cloud Cache** shows **Connected** only after the server accepts your key, and otherwise shows **API key rejected** or **Server unreachable**.
+- Confirmed X 404s are shared for 24 hours, so other clients can avoid repeating lookups for unavailable accounts. The options page now reports cloud hit rate and unavailable-account hits.
+
+### Fixes
+
+- Community-cache records now distinguish "checked, no affiliation" from "not checked", so affiliation filters can use a definitive no-affiliation result without requiring another X lookup.
+
 ## [4.4.0] - 2026-11-08
 
 ### Improvements

@@ -1,25 +1,41 @@
 /**
  * Cloud Community Cache Client
- * Handles communication with the Cloudflare Workers API for shared cache
+ * Talks to the x-insight-cache server: batched lookups before any X API call,
+ * and batched contributions of what we observe so other users can skip theirs.
  *
- * CHANGELOG v2.5.0:
- * - Added 24hr contribution deduplication (90% fewer writes)
- * - Extended stats cache 5min→1hr (fewer server calls)
- * - Mark cloud hits as "recently contributed" to avoid re-uploads
+ * Reliability notes:
+ * - Lookups and contributions each have their own token bucket, sized just under the
+ *   server's per-IP limits, so we spend the budget instead of earning 429s.
+ * - When the lookup budget is briefly spent the batch is held (and keeps growing)
+ *   rather than answered empty — an empty answer means "go ask X", which is exactly
+ *   the rate limit the cache exists to protect.
+ * - Pending contributions are persisted, chunked to the server's batch limit, and
+ *   only removed from the queue once the server has answered for them.
+ * - Each contribution carries its observation time (`t`) so a late upload (bulk sync,
+ *   queue restored after a restart) can't masquerade as fresh data on the server.
+ * - Dedup is by content, not by name: an entry is skipped only when the server is
+ *   already known to hold at least the same fields, so a richer record (e.g. an
+ *   affiliation learned from a hovercard) is always sent.
  */
 
-import { STORAGE_KEYS, CLOUD_CACHE_CONFIG, affiliationWasChecked } from '../shared/constants.js';
+import { STORAGE_KEYS, CLOUD_CACHE_CONFIG } from '../shared/constants.js';
 import browserAPI from '../shared/browser-api.js';
 import { debounce } from '../shared/utils.js';
 import { UserCacheStorage } from '../shared/storage.js';
-import { withRequestTimeout } from '../shared/request-policy.js';
+import { withRequestTimeout, readRateLimitReset } from '../shared/request-policy.js';
 
 // Twitter launched in 2006; anything earlier is bad data, not an old account.
 const MIN_CREATED_AT_SECONDS = 1136073600;
+const USERNAME_RE = /^[a-z0-9_]{1,15}$/;
+// After the server rejects our key, re-probe this often in case it is re-enabled.
+const AUTH_RETRY_MS = 10 * 60 * 1000;
+const CONTRIBUTION_FIELDS = ['l', 'd', 'a', 'af', 'c', 'id', 'uc', 'nf'];
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * X's created_at ("Tue Jun 02 20:12:29 +0000 2009") to unix SECONDS, which is the unit
- * the Worker stores. Returns 0 for anything unparseable or outside a sane range, so a
+ * the server stores. Returns 0 for anything unparseable or outside a sane range, so a
  * bad value is simply never contributed.
  * @param {string|number|null|undefined} value
  * @returns {number} unix seconds, or 0
@@ -33,6 +49,85 @@ function toUnixSeconds(value) {
     return seconds;
 }
 
+/**
+ * Build the wire entry for /contribute from a cache record. Optional fields are only
+ * included when known, so an upload can never overwrite richer server data with blanks.
+ * @returns {object|null} null when there is nothing worth sending
+ */
+export function buildContributionEntry(data) {
+    if (!data || typeof data !== 'object') return null;
+    const location = typeof data.location === 'string' ? data.location.trim() : '';
+    const device = typeof data.device === 'string' ? data.device.trim() : '';
+    if (!location && !device) return null;
+
+    const observedAt = UserCacheStorage.observationTimestamp(data);
+    if (observedAt === null) return null;
+
+    const entry = { a: data.locationAccurate !== false, t: Math.floor(observedAt / 1000) };
+    if (location) entry.l = location;
+    if (device) entry.d = device;
+
+    const meta = data.meta;
+    if (meta) {
+        const affiliation = meta.affiliate?.name || meta.affiliateUsername;
+        if (affiliation) entry.af = String(affiliation);
+        else if (meta.affiliateUsername !== undefined) entry.af = '';
+
+        const createdSeconds = toUnixSeconds(meta.createdAt);
+        if (createdSeconds) entry.c = createdSeconds;
+
+        if (meta.restId && /^[0-9]{1,20}$/.test(String(meta.restId))) entry.id = String(meta.restId);
+        if (Number.isInteger(meta.usernameChanges) && meta.usernameChanges >= 0) {
+            entry.uc = meta.usernameChanges;
+        }
+    }
+    return entry;
+}
+
+/** Content of an entry without its observation time, for dedup comparisons. */
+function contentOf(entry) {
+    const content = {};
+    for (const key of CONTRIBUTION_FIELDS) {
+        if (entry[key] !== undefined) content[key] = entry[key];
+    }
+    return content;
+}
+
+/** Simple token bucket with an optional hard block (server-directed Retry-After). */
+class TokenBucket {
+    constructor(perMinute, burst) {
+        this.ratePerMs = perMinute / 60000;
+        this.capacity = burst;
+        this.tokens = burst;
+        this.updatedAt = Date.now();
+        this.blockedUntil = 0;
+    }
+
+    _refill(now) {
+        const elapsed = Math.max(0, now - this.updatedAt);
+        this.tokens = Math.min(this.capacity, this.tokens + elapsed * this.ratePerMs);
+        this.updatedAt = now;
+    }
+
+    /** Milliseconds until a request may be sent (0 = now). */
+    waitMs(now = Date.now()) {
+        this._refill(now);
+        const blocked = Math.max(0, this.blockedUntil - now);
+        const refill = this.tokens >= 1 ? 0 : Math.ceil((1 - this.tokens) / this.ratePerMs);
+        return Math.max(blocked, refill);
+    }
+
+    tryTake(now = Date.now()) {
+        if (this.waitMs(now) > 0) return false;
+        this.tokens -= 1;
+        return true;
+    }
+
+    blockUntil(deadline) {
+        if (Number.isFinite(deadline)) this.blockedUntil = Math.max(this.blockedUntil, deadline);
+    }
+}
+
 class CloudCacheClient {
     constructor() {
         this.enabled = false;
@@ -42,24 +137,31 @@ class CloudCacheClient {
         this.lookupBatchTimeout = null;
         this.lookupBatchFirstAt = 0; // When the current un-flushed batch started (for the max-wait cap)
         this.lookupBatchResolvers = []; // Array of resolve functions waiting for batch
-        this.contributionQueue = new Map(); // username -> data
+        this.contributionQueue = new Map(); // username -> wire entry (insertion order = age)
         this.contributeTimeout = null;
-        this.requestCount = 0;
-        this.requestWindowStart = Date.now();
+        this.contributeFlushing = false;
+        this.lookupBucket = new TokenBucket(
+            CLOUD_CACHE_CONFIG.LOOKUP_REQUESTS_PER_MINUTE, CLOUD_CACHE_CONFIG.LOOKUP_BURST);
+        this.contributeBucket = new TokenBucket(
+            CLOUD_CACHE_CONFIG.CONTRIBUTE_REQUESTS_PER_MINUTE, CLOUD_CACHE_CONFIG.CONTRIBUTE_BURST);
         this.consecutiveFailures = 0; // Track failures for exponential backoff
         this.backoffUntil = 0; // Timestamp until which we should back off
+        // What the server last told us: ok | unauthorized | unreachable | unknown
+        this.connection = { state: 'unknown', status: null, at: 0 };
         this.stats = {
             lookups: 0,
             hits: 0,
+            notFoundHits: 0,
             misses: 0,
             contributions: 0,
             errors: 0
         };
 
-        // COST OPTIMIZATION: Track recently contributed users to avoid re-uploading
-        // Map of username -> timestamp of last contribution
+        // What the server is known to hold per user: username -> { entry, at }.
+        // Filled by our own successful uploads and by cloud hits.
         this.recentContributions = new Map();
-        this.CONTRIBUTION_DEDUP_MS = 24 * 60 * 60 * 1000; // Don't re-contribute within 24 hours
+        this.CONTRIBUTION_DEDUP_MS = 24 * 60 * 60 * 1000; // Don't re-send identical data within 24 hours
+        this.recentMisses = new Map(); // username -> when the cloud last said "unknown"
 
         // Cached server stats (stale-while-revalidate for fast UI)
         this.serverStats = null;
@@ -67,6 +169,7 @@ class CloudCacheClient {
 
         // Debounced stats saving to prevent excessive storage writes
         this._debouncedSaveStats = debounce(() => this._saveStatsImmediate(), 5000);
+        this._debouncedSaveQueue = debounce(() => this._saveQueueImmediate(), 3000);
     }
 
     /**
@@ -78,7 +181,8 @@ class CloudCacheClient {
             STORAGE_KEYS.CLOUD_CACHE_ENABLED,
             STORAGE_KEYS.CLOUD_CACHE_API_KEY,
             STORAGE_KEYS.CLOUD_STATS,
-            STORAGE_KEYS.CLOUD_SERVER_STATS
+            STORAGE_KEYS.CLOUD_SERVER_STATS,
+            STORAGE_KEYS.CLOUD_PENDING_CONTRIBUTIONS
         ]);
 
         this.enabled = result[STORAGE_KEYS.CLOUD_CACHE_ENABLED] === true;
@@ -100,11 +204,44 @@ class CloudCacheClient {
             }
         }
 
+        this._restoreQueue(result[STORAGE_KEYS.CLOUD_PENDING_CONTRIBUTIONS]);
+
         console.log(`☁️ Cloud Cache: ${this.enabled ? 'enabled' : 'disabled'}`);
 
         // Server stats are loaded from storage above and refreshed lazily by the Options
         // page (stale-while-revalidate), so no eager network fetch on every worker start.
         return this.enabled;
+    }
+
+    /**
+     * Reload contributions that were queued when the worker last stopped. Entries
+     * whose observation has since expired are dropped rather than uploaded.
+     */
+    _restoreQueue(stored) {
+        if (!this.enabled) {
+            if (stored) this._saveQueueImmediate();
+            return;
+        }
+        if (!stored || typeof stored !== 'object') return;
+
+        let dropped = 0;
+        for (const [username, entry] of Object.entries(stored)) {
+            const timestamp = Number.isInteger(entry?.t) ? entry.t * 1000 : null;
+            const fresh = timestamp !== null && (entry.nf === true
+                ? timestamp <= Date.now() && Date.now() - timestamp < CLOUD_CACHE_CONFIG.NOT_FOUND_TTL_MS
+                : UserCacheStorage.isFreshObservation({ timestamp }));
+            if (!USERNAME_RE.test(username) || !fresh || this.contributionQueue.has(username)) {
+                dropped++;
+                continue;
+            }
+            this.contributionQueue.set(username, entry);
+        }
+        this._trimQueue();
+        if (dropped) this._debouncedSaveQueue();
+        if (this.contributionQueue.size > 0) {
+            console.log(`☁️ Restored ${this.contributionQueue.size} pending contributions`);
+            this._scheduleFlush(2000);
+        }
     }
 
     /**
@@ -118,12 +255,33 @@ class CloudCacheClient {
         this.enabled = enabled;
         console.log(`☁️ Cloud Cache: ${enabled ? 'enabled' : 'disabled'}`);
 
+        if (!enabled) {
+            // Turning sharing off must stop anything already queued from leaving.
+            this._clearPendingWork();
+            await this._saveQueueImmediate();
+        }
+
         // Warm the server-stats cache so Options can display instantly.
         if (enabled && this.isConfigured()) {
             this.refreshServerStats({ timeoutMs: 15000 }).catch(() => {});
         }
 
         return enabled;
+    }
+
+    _clearPendingWork() {
+        if (this.contributeTimeout) clearTimeout(this.contributeTimeout);
+        this.contributeTimeout = null;
+        this.contributionQueue.clear();
+        this._debouncedSaveQueue.cancel();
+
+        if (this.lookupBatchTimeout) clearTimeout(this.lookupBatchTimeout);
+        this.lookupBatchTimeout = null;
+        const resolvers = this.lookupBatchResolvers;
+        this.lookupBatch.clear();
+        this.lookupBatchResolvers = [];
+        this.lookupBatchFirstAt = 0;
+        for (const resolve of resolvers) resolve(new Map());
     }
 
     /**
@@ -136,10 +294,18 @@ class CloudCacheClient {
         await browserAPI.storage.local.set({
             [STORAGE_KEYS.CLOUD_CACHE_API_KEY]: trimmed
         });
+        const changed = (trimmed || null) !== this.apiKey;
         this.apiKey = trimmed || null;
+
+        if (changed) {
+            this.connection = { state: 'unknown', status: null, at: 0 };
+            this.recentMisses.clear();
+            this.recentContributions.clear();
+        }
 
         if (this.enabled && this.isConfigured()) {
             this.refreshServerStats({ timeoutMs: 15000 }).catch(() => {});
+            if (this.contributionQueue.size > 0) this._scheduleFlush(1000);
         }
 
         return this.apiKey;
@@ -160,7 +326,23 @@ class CloudCacheClient {
      * Get statistics
      */
     getStats() {
-        return { ...this.stats };
+        return { ...this.stats, pendingContributions: this.contributionQueue.size };
+    }
+
+    /**
+     * What the server last said about our key: ok | unauthorized | unreachable | unknown
+     */
+    getConnectionStatus() {
+        return { ...this.connection };
+    }
+
+    _setConnection(state, status = null) {
+        this.connection = { state, status, at: Date.now() };
+    }
+
+    /** The server rejected our key recently; don't keep knocking until it changes. */
+    isAuthPaused() {
+        return this.connection.state === 'unauthorized' && Date.now() - this.connection.at < AUTH_RETRY_MS;
     }
 
     /**
@@ -221,41 +403,69 @@ class CloudCacheClient {
         await this._saveStatsImmediate();
     }
 
+    async _saveQueueImmediate() {
+        this._debouncedSaveQueue.cancel();
+        try {
+            if (this.contributionQueue.size === 0) {
+                await browserAPI.storage.local.remove(STORAGE_KEYS.CLOUD_PENDING_CONTRIBUTIONS);
+            } else {
+                await browserAPI.storage.local.set({
+                    [STORAGE_KEYS.CLOUD_PENDING_CONTRIBUTIONS]: Object.fromEntries(this.contributionQueue)
+                });
+            }
+        } catch (error) {
+            console.warn('☁️ Failed to persist pending contributions:', error.message);
+        }
+    }
+
     /**
-     * Check rate limit
+     * Persist pending contributions now (for shutdown scenarios)
      */
-    checkRateLimit() {
-        const now = Date.now();
-        
-        // Reset window if minute has passed
-        if (now - this.requestWindowStart > 60000) {
-            this.requestCount = 0;
-            this.requestWindowStart = now;
+    async forceSaveQueue() {
+        await this._saveQueueImmediate();
+    }
+
+    /**
+     * Wait (up to a deadline) for a request token. Returns false if none in time.
+     */
+    async _acquireToken(bucket, deadline) {
+        for (;;) {
+            const wait = bucket.waitMs();
+            if (wait === 0 && bucket.tryTake()) return true;
+            if (Date.now() + wait > deadline) return false;
+            await sleep(Math.max(wait, 10));
         }
-        
-        if (this.requestCount >= CLOUD_CACHE_CONFIG.MAX_REQUESTS_PER_MINUTE) {
-            return false;
-        }
-        
-        this.requestCount++;
-        return true;
     }
 
     /**
      * Lookup users in cloud cache
-     * Returns map of username -> data (or null for misses)
+     * Returns map of username -> data (users the cloud doesn't know are absent)
      */
     async lookup(usernames) {
-        if (!this.enabled || !usernames || usernames.length === 0) {
+        if (!this.enabled || !this.isConfigured() || !usernames || usernames.length === 0) {
+            return new Map();
+        }
+        // Known-bad key or a failing server: answer at once rather than holding callers.
+        if (this.isAuthPaused() || this.shouldBackoff()) {
             return new Map();
         }
 
+        const now = Date.now();
+        const wanted = [];
+        for (const username of usernames) {
+            const name = String(username).toLowerCase();
+            const missedAt = this.recentMisses.get(name);
+            if (missedAt && now - missedAt < CLOUD_CACHE_CONFIG.MISS_TTL_MS) continue;
+            wanted.push(name);
+        }
+        if (wanted.length === 0) return new Map();
+
         // Add to batch (record when this un-flushed batch started, for the max-wait cap)
         if (this.lookupBatch.size === 0) {
-            this.lookupBatchFirstAt = Date.now();
+            this.lookupBatchFirstAt = now;
         }
-        for (const username of usernames) {
-            this.lookupBatch.add(username.toLowerCase());
+        for (const name of wanted) {
+            this.lookupBatch.add(name);
         }
 
         // Return batched promise - all callers share the same batch result
@@ -294,12 +504,23 @@ class CloudCacheClient {
      * Execute batched lookup and resolve all waiting callers
      */
     async executeBatchedLookup() {
+        // Out of lookup budget: hold the batch (it keeps absorbing new names) until a
+        // token frees up, rather than answering empty and pushing callers onto X.
+        const wait = this.lookupBucket.waitMs();
+        const deferDeadline = this.lookupBatchFirstAt + CLOUD_CACHE_CONFIG.LOOKUP_MAX_DEFER_MS;
+        if (wait > 0 && this.lookupBatch.size > 0 && Date.now() + wait <= deferDeadline) {
+            if (this.lookupBatchTimeout) clearTimeout(this.lookupBatchTimeout);
+            this.lookupBatchTimeout = setTimeout(() => this.executeBatchedLookup(), wait);
+            return;
+        }
+
         const batch = Array.from(this.lookupBatch);
         const resolvers = [...this.lookupBatchResolvers];
         
         // Clear batch state
         this.lookupBatch.clear();
         this.lookupBatchResolvers = [];
+        if (this.lookupBatchTimeout) clearTimeout(this.lookupBatchTimeout);
         this.lookupBatchTimeout = null;
         this.lookupBatchFirstAt = 0;
 
@@ -312,7 +533,7 @@ class CloudCacheClient {
         }
 
         try {
-            const results = await this.fetchLookup(batch);
+            const results = await this.fetchLookup(batch, deferDeadline);
             // Resolve ALL waiting callers with the same results
             for (const resolve of resolvers) {
                 resolve(results);
@@ -349,29 +570,61 @@ class CloudCacheClient {
     recordSuccess() {
         this.consecutiveFailures = 0;
         this.backoffUntil = 0;
+        this._setConnection('ok');
     }
     
     /**
      * Record a failed request (increase backoff)
      */
-    recordFailure() {
+    recordFailure(status = null) {
         this.consecutiveFailures++;
         this.backoffUntil = Date.now() + this.getBackoffDelay();
+        this._setConnection('unreachable', status);
         console.warn(`☁️ Cloud cache backing off for ${this.getBackoffDelay()}ms (${this.consecutiveFailures} failures)`);
+    }
+
+    /**
+     * Shared handling for non-OK responses from any endpoint.
+     * @returns {'unauthorized'|'rate_limited'|'rejected'|'server'}
+     */
+    _handleErrorStatus(response, bucket) {
+        const status = response.status;
+        if (status === 401 || status === 403) {
+            this._setConnection('unauthorized', status);
+            console.warn(`☁️ Community cache rejected the API key (HTTP ${status})`);
+            return 'unauthorized';
+        }
+        if (status === 429) {
+            bucket?.blockUntil(readRateLimitReset(response.headers));
+            console.warn('☁️ Community cache rate limited us; holding requests until it resets');
+            return 'rate_limited';
+        }
+        if (status >= 400 && status < 500) {
+            // Auth passed (it runs before validation), so the server is fine; the
+            // request itself is bad and retrying it unchanged would never succeed.
+            this._setConnection('ok', status);
+            return 'rejected';
+        }
+        this.recordFailure(status);
+        return 'server';
+    }
+
+    _rememberMiss(name, now) {
+        this.recentMisses.set(name, now);
+        if (this.recentMisses.size > 5000) {
+            for (const [user, at] of this.recentMisses) {
+                if (now - at >= CLOUD_CACHE_CONFIG.MISS_TTL_MS) this.recentMisses.delete(user);
+            }
+        }
     }
     
     /**
      * Fetch lookup from cloud API
      */
-    async fetchLookup(usernames) {
+    async fetchLookup(usernames, deadline = Date.now() + CLOUD_CACHE_CONFIG.LOOKUP_MAX_DEFER_MS) {
         // Check backoff first
-        if (this.shouldBackoff()) {
-            console.warn('☁️ Cloud cache in backoff period, skipping lookup');
-            return new Map();
-        }
-        
-        if (!this.checkRateLimit()) {
-            console.warn('☁️ Cloud cache rate limited (client-side)');
+        if (this.shouldBackoff() || this.isAuthPaused()) {
+            console.warn('☁️ Cloud cache paused, skipping lookup');
             return new Map();
         }
 
@@ -384,12 +637,13 @@ class CloudCacheClient {
             batches.push(usernames.slice(i, i + CLOUD_CACHE_CONFIG.BATCH_SIZE));
         }
 
-        let hasSuccess = false;
-        let hasFailure = false;
-
         for (const batch of batches) {
+            if (!await this._acquireToken(this.lookupBucket, deadline)) {
+                console.warn('☁️ Cloud lookup budget exhausted, skipping remainder of batch');
+                break;
+            }
             try {
-                const data = await withRequestTimeout(async signal => {
+                const { response, data } = await withRequestTimeout(async signal => {
                     const response = await fetch(
                         `${this.apiUrl}/lookup?users=${batch.join(',')}`,
                         {
@@ -401,19 +655,25 @@ class CloudCacheClient {
                             }
                         }
                     );
-
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
-                    }
-
-                    return response.json();
+                    return { response, data: response.ok ? await response.json() : null };
                 }, CLOUD_CACHE_CONFIG.LOOKUP_TIMEOUT_MS);
-                hasSuccess = true;
+
+                if (!response.ok) {
+                    this.stats.errors++;
+                    const kind = this._handleErrorStatus(response, this.lookupBucket);
+                    console.warn(`☁️ Cloud lookup failed with HTTP ${response.status}`);
+                    if (kind === 'unauthorized' || kind === 'server') break;
+                    continue;
+                }
+                this.recordSuccess();
 
                 // Process results with input validation
-                if (data.results) {
-                    const now = Date.now();
+                const now = Date.now();
+                const returned = new Set();
+                if (data?.results) {
                     for (const [username, info] of Object.entries(data.results)) {
+                        const normalizedUsername = username.toLowerCase();
+                        returned.add(normalizedUsername);
                         // Retain the source cache timestamp across this download.
                         // Invalid/expired dates cannot become new hits.
                         const timestamp = Number.isFinite(info?.t) ? info.t * 1000 : null;
@@ -430,7 +690,6 @@ class CloudCacheClient {
                             continue;
                         }
 
-                        const normalizedUsername = username.toLowerCase();
                         this.stats.hits++;
 
                         const cloudEntry = {
@@ -441,25 +700,28 @@ class CloudCacheClient {
                             timestamp
                         };
 
-                        // Optional shared profile signals (Worker v2.8.0). Mapped into the
-                        // same `meta` shape the X API path produces, so every consumer
-                        // downstream reads one format regardless of where the data came from.
+                        // Optional shared profile signals. Mapped into the same `meta`
+                        // shape the X API path produces, so every consumer downstream
+                        // reads one format regardless of where the data came from.
                         const affiliation = this.sanitizeInput(info.af);
+                        const affiliationWasIncluded = Object.hasOwn(info, 'af') && typeof info.af === 'string';
                         const restId = typeof info.id === 'string' && /^[0-9]{1,20}$/.test(info.id)
                             ? info.id
                             : null;
                         const createdAtMs = Number.isInteger(info.c) && info.c > 0 ? info.c * 1000 : null;
                         const usernameChanges = Number.isInteger(info.uc) && info.uc >= 0 ? info.uc : null;
 
-                        if (affiliation || restId || createdAtMs || usernameChanges !== null) {
+                        if (affiliationWasIncluded || restId || createdAtMs || usernameChanges !== null) {
                             cloudEntry.meta = {
                                 // The community cache carries only the shared subset, not
                                 // the display name, avatar or verification state. Flagged
                                 // so the hovercard still does a live fetch instead of
                                 // rendering a card with half its fields blank.
                                 partial: true,
+                                // An explicit empty `af` is "checked, none"; a missing
+                                // field from older servers remains unknown.
                                 affiliate: affiliation ? { name: affiliation } : null,
-                                affiliateUsername: null,
+                                ...(affiliationWasIncluded ? { affiliateUsername: affiliation } : {}),
                                 restId,
                                 createdAt: createdAtMs ? new Date(createdAtMs).toISOString() : null,
                                 usernameChanges
@@ -468,53 +730,64 @@ class CloudCacheClient {
 
                         results.set(normalizedUsername, cloudEntry);
 
-                        // COST OPTIMIZATION: Mark as recently contributed so we don't
-                        // re-upload data the cloud already has.
-                        //
-                        // Deliberately NOT for lean entries. Records written before the
-                        // cloud carried affiliation have no `meta`, and suppressing their
-                        // contribution would mean a later hovercard fetch — the one path
-                        // that resolves affiliation without an extra API call — is dropped
-                        // on the floor, leaving those entries lean forever. Re-uploading
-                        // them is precisely what upgrades the shared cache.
-                        if (affiliationWasChecked(cloudEntry.meta)) {
-                            this.recentContributions.set(normalizedUsername, now);
+                        // Record what the server already holds, so we don't re-upload the
+                        // same fields. Anything richer we learn later still goes up.
+                        const held = buildContributionEntry(cloudEntry);
+                        if (held) {
+                            this.recentContributions.set(normalizedUsername, { entry: contentOf(held), at: timestamp });
                         }
                     }
                 }
 
+                if (data?.notFound && typeof data.notFound === 'object') {
+                    for (const [username, info] of Object.entries(data.notFound)) {
+                        const normalizedUsername = username.toLowerCase();
+                        const timestamp = Number.isInteger(info?.t) ? info.t * 1000 : null;
+                        if (!batch.includes(normalizedUsername) || results.has(normalizedUsername) ||
+                            timestamp === null || timestamp > Date.now() ||
+                            Date.now() - timestamp >= CLOUD_CACHE_CONFIG.NOT_FOUND_TTL_MS) continue;
+
+                        returned.add(normalizedUsername);
+                        this.stats.hits++;
+                        this.stats.notFoundHits++;
+                        results.set(normalizedUsername, { notFound: true, timestamp });
+                        this.recentContributions.set(normalizedUsername, {
+                            entry: { nf: true },
+                            at: timestamp
+                        });
+                    }
+                }
+
+                for (const name of batch) {
+                    if (!returned.has(name)) this._rememberMiss(name, now);
+                }
+
                 // Track misses
-                if (data.misses) {
+                if (data?.misses) {
                     this.stats.misses += data.misses.length;
                 }
 
             } catch (error) {
-                hasFailure = true;
                 if (error.name === 'AbortError' || error.code === 'TIMEOUT') {
                     console.warn('☁️ Cloud lookup timed out');
                 } else {
                     console.error('☁️ Cloud lookup failed:', error.message);
                 }
                 this.stats.errors++;
+                this.recordFailure();
+                break;
             }
         }
 
         // Diagnostic (issue #23 "flag/pop-up mismatch"): a returned username we never asked
         // for is a strong signal of a server-side username→data misalignment (the leading
         // root-cause hypothesis). This is rare by design, so log unconditionally — it is the
-        // smoking gun that would confirm the mismatch originates in the cloud Worker.
+        // smoking gun that would confirm the mismatch originates in the server.
         const requestedSet = new Set(usernames);
         for (const returnedUser of results.keys()) {
             if (!requestedSet.has(returnedUser)) {
                 console.warn(`☁️ X-Posed: cloud /lookup returned an UNREQUESTED user "${returnedUser}". Possible server-side mapping bug (issue #23).`);
             }
-        }
-
-        // Update backoff state based on results
-        if (hasSuccess && !hasFailure) {
-            this.recordSuccess();
-        } else if (hasFailure) {
-            this.recordFailure();
         }
 
         // Save stats (debounced)
@@ -523,9 +796,45 @@ class CloudCacheClient {
         return results;
     }
 
+    /** True when the server is already known to hold at least this entry's fields. */
+    _alreadyShared(username, entry) {
+        const known = this.recentContributions.get(username);
+        if (!known || Date.now() - known.at >= this.CONTRIBUTION_DEDUP_MS) return false;
+        for (const key of CONTRIBUTION_FIELDS) {
+            if (entry[key] !== undefined && known.entry[key] !== entry[key]) return false;
+        }
+        return true;
+    }
+
+    _markShared(username, entry) {
+        const now = entry.nf === true && Number.isInteger(entry.t) ? entry.t * 1000 : Date.now();
+        this.recentContributions.set(username, { entry: contentOf(entry), at: now });
+        // Clean up old dedup entries periodically (keep map from growing)
+        if (this.recentContributions.size > 10000) {
+            const cutoff = now - this.CONTRIBUTION_DEDUP_MS;
+            for (const [user, known] of this.recentContributions.entries()) {
+                if (known.at < cutoff) this.recentContributions.delete(user);
+            }
+        }
+    }
+
+    _trimQueue() {
+        while (this.contributionQueue.size > CLOUD_CACHE_CONFIG.MAX_PENDING_CONTRIBUTIONS) {
+            this.contributionQueue.delete(this.contributionQueue.keys().next().value);
+        }
+    }
+
+    _scheduleFlush(delay) {
+        if (this.contributeTimeout) clearTimeout(this.contributeTimeout);
+        this.contributeTimeout = setTimeout(() => {
+            this.contributeTimeout = null;
+            this.flushContributions();
+        }, Math.max(0, delay));
+    }
+
     /**
-     * Contribute data to cloud cache
-     * COST OPTIMIZATION: Skip if recently contributed (deduplication)
+     * Queue a fresh observation for the community cache.
+     * Skipped when the server is already known to hold the same (or richer) data.
      */
     async contribute(username, data) {
         if (!this.enabled || !username || !data) {
@@ -535,100 +844,49 @@ class CloudCacheClient {
         // legacy local records whose original observation time was lost.
         if (data.fromCloud === true || !UserCacheStorage.isFreshObservation(data)) return;
 
-        const normalizedUsername = username.toLowerCase();
+        const normalizedUsername = String(username).toLowerCase();
+        if (!USERNAME_RE.test(normalizedUsername)) return;
 
-        // COST OPTIMIZATION: Skip if we recently contributed this user
-        const lastContributed = this.recentContributions.get(normalizedUsername);
-        if (lastContributed && Date.now() - lastContributed < this.CONTRIBUTION_DEDUP_MS) {
-            return; // Already contributed recently, skip
-        }
+        const entry = buildContributionEntry(data);
+        if (!entry || this._alreadyShared(normalizedUsername, entry)) return;
 
-        // Clean up old dedup entries periodically (keep map from growing)
-        if (this.recentContributions.size > 10000) {
-            const cutoff = Date.now() - this.CONTRIBUTION_DEDUP_MS;
-            for (const [user, time] of this.recentContributions.entries()) {
-                if (time < cutoff) {
-                    this.recentContributions.delete(user);
-                }
-            }
-        }
+        this._queueContribution(normalizedUsername, entry);
+    }
 
-        // Add to contribution queue. The optional fields (Worker v2.8.0) come from the
-        // API response's `meta` and are only sent when we actually have them, so a
-        // cloud-sourced entry can never overwrite a richer one with blanks.
-        const entry = {
-            l: data.location,
-            d: data.device,
-            a: data.locationAccurate
-        };
-        const meta = data.meta;
-        if (meta) {
-            const affiliation = meta.affiliate?.name || meta.affiliateUsername;
-            if (affiliation) entry.af = String(affiliation);
+    async contributeNotFound(username, observedAt = Date.now()) {
+        if (!this.enabled || !this.isConfigured() || !username || !Number.isFinite(observedAt) ||
+            observedAt > Date.now()) return;
+        const normalizedUsername = String(username).toLowerCase();
+        if (!USERNAME_RE.test(normalizedUsername)) return;
 
-            const createdSeconds = toUnixSeconds(meta.createdAt);
-            if (createdSeconds) entry.c = createdSeconds;
+        const entry = { nf: true, t: Math.floor(observedAt / 1000) };
+        if (Date.now() - entry.t * 1000 >= CLOUD_CACHE_CONFIG.NOT_FOUND_TTL_MS ||
+            this._alreadyShared(normalizedUsername, entry)) return;
+        this._queueContribution(normalizedUsername, entry);
+    }
 
-            if (meta.restId) entry.id = String(meta.restId);
-            if (Number.isInteger(meta.usernameChanges) && meta.usernameChanges >= 0) {
-                entry.uc = meta.usernameChanges;
-            }
-        }
+    _queueContribution(normalizedUsername, entry) {
+        // Re-insert so the queue stays ordered oldest → newest for trimming.
+        this.contributionQueue.delete(normalizedUsername);
         this.contributionQueue.set(normalizedUsername, entry);
+        this._trimQueue();
+        this._debouncedSaveQueue();
 
-        // Debounce contributions
-        if (this.contributeTimeout) {
-            clearTimeout(this.contributeTimeout);
-        }
-
-        this.contributeTimeout = setTimeout(() => {
-            this.flushContributions();
-        }, CLOUD_CACHE_CONFIG.CONTRIBUTE_DELAY_MS);
-
-        // Flush if batch is full
+        // Flush if batch is full; otherwise a fixed (not sliding) delay from the first
+        // queued entry, so continuous scrolling can't postpone the upload forever.
         if (this.contributionQueue.size >= CLOUD_CACHE_CONFIG.CONTRIBUTE_BATCH_SIZE) {
             this.flushContributions();
+        } else if (!this.contributeTimeout) {
+            this._scheduleFlush(CLOUD_CACHE_CONFIG.CONTRIBUTE_DELAY_MS);
         }
     }
 
     /**
-     * Flush pending contributions to cloud
+     * POST one chunk (≤ CONTRIBUTE_BATCH_SIZE) to /contribute.
+     * @returns {Promise<{kind: 'ok'|'unauthorized'|'rate_limited'|'rejected'|'server'|'network', accepted: number}>}
      */
-    async flushContributions() {
-        if (this.contributionQueue.size === 0) {
-            return;
-        }
-
-        if (this.contributeTimeout) {
-            clearTimeout(this.contributeTimeout);
-            this.contributeTimeout = null;
-        }
-
-        // Check backoff before attempting
-        if (this.shouldBackoff()) {
-            console.warn('☁️ Cloud cache in backoff period, deferring contributions');
-            // Re-schedule for after backoff period
-            const delay = this.backoffUntil - Date.now() + 1000;
-            this.contributeTimeout = setTimeout(() => {
-                this.flushContributions();
-            }, delay);
-            return;
-        }
-
-        // IMPORTANT: Check rate limit BEFORE clearing the queue
-        if (!this.checkRateLimit()) {
-            console.warn('☁️ Contribution rate limited (client-side), will retry');
-            // Re-schedule after rate limit window resets
-            this.contributeTimeout = setTimeout(() => {
-                this.flushContributions();
-            }, 60000); // Retry after 1 minute
-            return;
-        }
-
-        // NOW it's safe to extract and clear the queue
-        const entries = Object.fromEntries(this.contributionQueue);
-        this.contributionQueue.clear();
-
+    async _postContributions(entries, timeoutMs = CLOUD_CACHE_CONFIG.CONTRIBUTE_TIMEOUT_MS) {
+        const count = Object.keys(entries).length;
         try {
             const { response, data } = await withRequestTimeout(async signal => {
                 const response = await fetch(`${this.apiUrl}/contribute`, {
@@ -640,26 +898,18 @@ class CloudCacheClient {
                     },
                     body: JSON.stringify({ entries })
                 });
-                return { response, data: response.ok ? await response.json() : null };
-            }, CLOUD_CACHE_CONFIG.CONTRIBUTE_TIMEOUT_MS);
+                return { response, data: response.ok ? await response.json().catch(() => null) : null };
+            }, timeoutMs);
 
             if (response.ok) {
-                this.stats.contributions += data.accepted || Object.keys(entries).length;
-                console.log(`☁️ Contributed ${Object.keys(entries).length} entries to cloud`);
                 this.recordSuccess();
-
-                // Mark these users as recently contributed (deduplication)
-                const now = Date.now();
-                for (const username of Object.keys(entries)) {
-                    this.recentContributions.set(username, now);
-                }
-            } else {
-                // Server error - restore entries for retry
-                console.warn(`☁️ Contribution failed with status ${response.status}, will retry`);
-                this._restoreContributions(entries);
-                this.recordFailure();
+                const accepted = Number.isInteger(data?.accepted) ? data.accepted : count;
+                return { kind: 'ok', accepted };
             }
-
+            this.stats.errors++;
+            const kind = this._handleErrorStatus(response, this.contributeBucket);
+            console.warn(`☁️ Contribution of ${count} entries failed with HTTP ${response.status} (${kind})`);
+            return { kind, accepted: 0 };
         } catch (error) {
             if (error.name === 'AbortError' || error.code === 'TIMEOUT') {
                 console.warn('☁️ Contribution timed out, will retry');
@@ -667,31 +917,74 @@ class CloudCacheClient {
                 console.error('☁️ Contribution failed:', error.message);
             }
             this.stats.errors++;
-            // Restore entries for retry
-            this._restoreContributions(entries);
             this.recordFailure();
+            return { kind: 'network', accepted: 0 };
+        }
+    }
+
+    /**
+     * Flush pending contributions to cloud, one server-sized chunk at a time.
+     * Entries leave the queue only once the server has answered for them.
+     */
+    async flushContributions() {
+        if (this.contributeTimeout) {
+            clearTimeout(this.contributeTimeout);
+            this.contributeTimeout = null;
+        }
+        if (this.contributeFlushing || this.contributionQueue.size === 0) return;
+        if (!this.enabled || !this.isConfigured()) return;
+
+        if (this.isAuthPaused()) {
+            this._scheduleFlush(this.connection.at + AUTH_RETRY_MS - Date.now());
+            return;
         }
 
-        this.saveStats();
-    }
-    
-    /**
-     * Restore contributions to queue for retry (internal use)
-     */
-    _restoreContributions(entries) {
-        for (const [username, data] of Object.entries(entries)) {
-            // Only restore if not already in queue (avoid duplicates)
-            if (!this.contributionQueue.has(username)) {
-                this.contributionQueue.set(username, data);
+        const wait = Math.max(this.contributeBucket.waitMs(), this.backoffUntil - Date.now());
+        if (wait > 0 || !this.contributeBucket.tryTake()) {
+            this._scheduleFlush(Math.max(wait, 1000));
+            return;
+        }
+
+        const chunk = Array.from(this.contributionQueue).slice(0, CLOUD_CACHE_CONFIG.CONTRIBUTE_BATCH_SIZE);
+        this.contributeFlushing = true;
+        let result;
+        try {
+            result = await this._postContributions(Object.fromEntries(chunk));
+        } finally {
+            this.contributeFlushing = false;
+        }
+
+        // Turned off while the request was in flight: setEnabled already cleared everything.
+        if (!this.enabled) return;
+
+        if (result.kind === 'ok' || result.kind === 'rejected') {
+            // A rejected (4xx) batch would be rejected forever; drop it so it can't wedge
+            // the queue. Entries re-queued with newer data mid-flight are kept.
+            for (const [username, entry] of chunk) {
+                if (this.contributionQueue.get(username) === entry) this.contributionQueue.delete(username);
+                if (result.kind === 'ok') this._markShared(username, entry);
+            }
+            if (result.kind === 'ok') {
+                this.stats.contributions += result.accepted;
+                console.log(`☁️ Contributed ${result.accepted}/${chunk.length} entries to cloud`);
             }
         }
-        
-        // Schedule retry with backoff
-        const delay = this.getBackoffDelay();
-        console.log(`☁️ Restored ${Object.keys(entries).length} contributions for retry in ${delay}ms`);
-        this.contributeTimeout = setTimeout(() => {
-            this.flushContributions();
-        }, delay);
+
+        this._debouncedSaveQueue();
+        this.saveStats();
+
+        if (this.contributionQueue.size === 0) return;
+        if (result.kind === 'unauthorized') {
+            this._scheduleFlush(AUTH_RETRY_MS);
+        } else if (result.kind === 'server' || result.kind === 'network') {
+            this._scheduleFlush(this.backoffUntil - Date.now() + 1000);
+        } else if (result.kind === 'rate_limited') {
+            this._scheduleFlush(this.contributeBucket.waitMs() + 1000);
+        } else if (this.contributionQueue.size >= CLOUD_CACHE_CONFIG.CONTRIBUTE_BATCH_SIZE) {
+            this._scheduleFlush(this.contributeBucket.waitMs());
+        } else {
+            this._scheduleFlush(CLOUD_CACHE_CONFIG.CONTRIBUTE_DELAY_MS);
+        }
     }
 
     /**
@@ -726,99 +1019,83 @@ class CloudCacheClient {
     }
 
     /**
-     * Bulk sync local cache entries to cloud
+     * Bulk sync local cache entries to cloud. Uses the same entry format (with meta and
+     * original observation time) and request budget as normal contributions.
      * @param {Object} cacheEntries - Map of username -> data
-     * @returns {Object} - { synced, skipped, errors }
+     * @returns {Object} - { synced, skipped, errors, message }
      */
     async bulkSync(cacheEntries) {
         if (!this.enabled || !this.isConfigured()) {
             return { synced: 0, skipped: 0, errors: 0, message: 'Cloud cache not enabled' };
         }
 
-        const entries = Object.entries(cacheEntries);
-        if (entries.length === 0) {
+        const all = Object.entries(cacheEntries || {});
+        if (all.length === 0) {
             return { synced: 0, skipped: 0, errors: 0, message: 'No entries to sync' };
         }
 
         let synced = 0;
         let skipped = 0;
         let errors = 0;
+        let message = null;
 
-        // Split into smaller batches for bulk sync (25 entries per batch to avoid timeouts)
-        const batchSize = 25; // Smaller than normal to avoid timeouts
-        const batches = [];
-        
-        for (let i = 0; i < entries.length; i += batchSize) {
-            batches.push(entries.slice(i, i + batchSize));
-        }
-
-        console.log(`☁️ Bulk sync: ${entries.length} entries in ${batches.length} batches`);
-
-        for (const batch of batches) {
-            const batchEntries = {};
-            
-            for (const [username, data] of batch) {
-                // Keep the same observation/provenance checks as normal contributions.
-                if (!data || !data.location || data.fromCloud === true || !UserCacheStorage.isFreshObservation(data)) {
-                    skipped++;
-                    continue;
-                }
-
-                batchEntries[username.toLowerCase()] = {
-                    l: data.location,
-                    d: data.device || '',
-                    a: data.locationAccurate !== false
-                };
-            }
-
-            if (Object.keys(batchEntries).length === 0) {
+        const pending = [];
+        for (const [username, data] of all) {
+            const name = String(username).toLowerCase();
+            // Keep the same observation/provenance checks as normal contributions.
+            const entry = USERNAME_RE.test(name) && data && data.fromCloud !== true &&
+                UserCacheStorage.isFreshObservation(data) ? buildContributionEntry(data) : null;
+            if (!entry || this._alreadyShared(name, entry)) {
+                skipped++;
                 continue;
             }
-
-            try {
-                const { response, result, errText } = await withRequestTimeout(async signal => {
-                    const response = await fetch(`${this.apiUrl}/contribute`, {
-                        method: 'POST',
-                        signal,
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...this.authHeader()
-                        },
-                        body: JSON.stringify({ entries: batchEntries })
-                    });
-                    return {
-                        response,
-                        result: response.ok ? await response.json() : null,
-                        errText: response.ok ? null : await response.text()
-                    };
-                }, 10000); // 10 second timeout for bulk sync, including the body
-
-                if (response.ok) {
-                    synced += result.accepted || Object.keys(batchEntries).length;
-                    console.log(`☁️ Batch synced: ${Object.keys(batchEntries).length} entries`);
-                } else {
-                    console.error(`☁️ Batch failed (${response.status}):`, errText);
-                    errors += Object.keys(batchEntries).length;
-                }
-
-            } catch (error) {
-                console.error('☁️ Bulk sync batch error:', error.message);
-                errors += Object.keys(batchEntries).length;
-            }
-
-            // Longer delay between batches to avoid rate limiting
-            await new Promise(resolve => setTimeout(resolve, 500));
+            pending.push([name, entry]);
         }
 
-        // Don't save stats here since we didn't modify contribution count
+        const chunkSize = CLOUD_CACHE_CONFIG.CONTRIBUTE_BATCH_SIZE;
+        console.log(`☁️ Bulk sync: ${pending.length} entries in ${Math.ceil(pending.length / chunkSize)} batches`);
 
+        for (let i = 0; i < pending.length; i += chunkSize) {
+            const chunk = pending.slice(i, i + chunkSize);
+            let result = { kind: 'network', accepted: 0 };
+
+            for (let attempt = 0; attempt < 3; attempt++) {
+                if (!this.enabled) break;
+                if (!await this._acquireToken(this.contributeBucket, Date.now() + 2 * 60 * 1000)) {
+                    result = { kind: 'rate_limited', accepted: 0 };
+                    break;
+                }
+                result = await this._postContributions(Object.fromEntries(chunk), 15000);
+                if (result.kind === 'server' || result.kind === 'network') {
+                    await sleep(this.getBackoffDelay());
+                } else if (result.kind !== 'rate_limited') {
+                    break;
+                }
+            }
+
+            if (result.kind === 'ok') {
+                synced += result.accepted;
+                skipped += chunk.length - result.accepted;
+                this.stats.contributions += result.accepted;
+                for (const [name, entry] of chunk) this._markShared(name, entry);
+            } else if (result.kind === 'rejected') {
+                skipped += chunk.length;
+            } else {
+                errors += pending.length - i;
+                if (result.kind === 'unauthorized') message = 'API key rejected by the community cache';
+                if (!this.enabled) message = 'Cloud cache was disabled during sync';
+                break;
+            }
+        }
+
+        this.saveStats();
         console.log(`☁️ Bulk sync complete: ${synced} synced, ${skipped} skipped, ${errors} errors`);
 
         return {
             synced,
             skipped,
             errors,
-            message: `Synced ${synced} entries to cloud`
+            message: message || `Synced ${synced} entries to cloud`
         };
     }
 
@@ -882,11 +1159,12 @@ class CloudCacheClient {
                 });
 
                 if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
+                    throw Object.assign(new Error(`HTTP ${response.status}`), { status: response.status });
                 }
 
                 return response.json();
             }, timeoutMs);
+            this._setConnection('ok');
             return {
                 totalEntries: data.totalEntries || 0,
                 totalContributions: data.totalContributions || 0,
@@ -894,6 +1172,11 @@ class CloudCacheClient {
             };
         } catch (error) {
             console.warn('☁️ Failed to fetch server stats:', error.message);
+            if (error.status === 401 || error.status === 403) {
+                this._setConnection('unauthorized', error.status);
+            } else if (error.status !== 429) {
+                this._setConnection('unreachable', error.status || null);
+            }
             return null;
         }
     }

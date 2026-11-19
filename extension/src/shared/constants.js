@@ -43,6 +43,7 @@ export const STORAGE_KEYS = {
     CLOUD_CACHE_API_KEY: 'x_cloud_cache_api_key',
     CLOUD_STATS: 'x_cloud_stats',
     CLOUD_SERVER_STATS: 'x_cloud_server_stats',
+    CLOUD_PENDING_CONTRIBUTIONS: 'x_cloud_pending_contributions',
     LAST_VERSION: 'x_last_version',
     WHATS_NEW_SEEN: 'x_whats_new_seen'
 };
@@ -77,8 +78,23 @@ export const CLOUD_CACHE_CONFIG = {
     MAX_RETRIES: 1,              // Reduced retries to save costs
     RETRY_DELAY_MS: 2000,
 
-    // Rate limiting (client-side)
-    MAX_REQUESTS_PER_MINUTE: 30
+    // Client-side request budgets (token buckets), kept just under the server's
+    // per-IP limits (lookup 60/min, contribute 30/min) so we never earn a 429.
+    // Lookup and contribute are separate so uploads can never starve lookups.
+    LOOKUP_REQUESTS_PER_MINUTE: 50,
+    LOOKUP_BURST: 5,
+    CONTRIBUTE_REQUESTS_PER_MINUTE: 20,
+    CONTRIBUTE_BURST: 3,
+    // When the lookup budget is momentarily spent, hold the batch (it keeps growing)
+    // for up to this long rather than falling through to the X API.
+    LOOKUP_MAX_DEFER_MS: 5000,
+    // A cloud miss is remembered briefly so rows re-scanned in quick succession
+    // don't each re-ask the server for an account nobody has contributed yet.
+    MISS_TTL_MS: 60000,
+    // Confirmed X 404s are shared for a day; the server expires them independently.
+    NOT_FOUND_TTL_MS: 24 * 60 * 60 * 1000,
+    // Pending uploads survive worker restarts; this caps the persisted queue.
+    MAX_PENDING_CONTRIBUTIONS: 2000
 };
 // NOTE: there is deliberately no ENABLED_BY_DEFAULT here. Since v3.0.0 the cache is
 // turned on for NEW installs only, by handleInstalled() in background/service-worker.js,
@@ -111,7 +127,6 @@ export const TIMING = {
     RATE_LIMIT_TOAST_COOLDOWN_MS: 60000,  // Cooldown between rate limit toasts
     RATE_LIMIT_CHECK_MS: 10000,     // Interval for rate limit status check
     KEEP_ALIVE_INTERVAL_MS: 20000,  // Service worker keep-alive interval
-    NOT_FOUND_CACHE_EXPIRY_MS: 300000, // 5 minutes for not-found cache entries
     NOT_FOUND_CLEANUP_INTERVAL_MS: 30000 // Reduced from 60s for faster memory cleanup
 };
 
