@@ -4,7 +4,7 @@
  * Cross-platform zip script for packaging the extension
  */
 
-import { createWriteStream, existsSync, mkdirSync, statSync } from 'fs';
+import { createWriteStream, existsSync, mkdirSync, readFileSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import archiver from 'archiver';
@@ -12,9 +12,11 @@ import archiver from 'archiver';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+const { version } = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'));
+
 const browser = process.argv[2] || 'chrome';
 const distDir = join(__dirname, '..', 'dist', browser);
-const outputFile = join(__dirname, '..', 'dist', `x-posed-${browser}.zip`);
+const outputFile = join(__dirname, '..', 'dist', `x-account-insight-${browser}-v${version}.zip`);
 
 if (!existsSync(distDir)) {
     console.error(`Error: dist/${browser} directory not found. Run build:${browser} first.`);

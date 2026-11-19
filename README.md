@@ -48,7 +48,12 @@ Full details, including data retention and permissions, are in [PRIVACY.md](PRIV
 
 ## Running it
 
-This project isn't published to any browser store — build and load it yourself:
+This project isn't published to any browser store. The easiest way to get a working copy without a Node toolchain is the **[Releases page](https://github.com/theonlytruebigmac/x-account-insight/releases)** — every tagged release has pre-built `x-account-insight-chrome-vX.Y.Z.zip` and `x-account-insight-firefox-vX.Y.Z.zip` assets, built automatically by CI:
+
+- **Chrome/Chromium**: download and unzip the `-chrome-` asset, then `chrome://extensions` → enable Developer mode → **Load unpacked** → select the unzipped folder.
+- **Firefox**: download the `-firefox-` asset, then `about:debugging` → **This Firefox** → **Load Temporary Add-on** → select the zip directly (no unzipping needed). This is a temporary install and is cleared when Firefox restarts.
+
+To build from source instead (needed for `dev:*` watch mode or if you want to modify the code):
 
 ```bash
 git clone https://github.com/theonlytruebigmac/x-account-insight.git
