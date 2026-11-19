@@ -4,6 +4,8 @@ All notable changes to X-Posed will be documented in this file.
 
 ## [Unreleased]
 
+## [4.5.0] - 2026-11-19
+
 ### Improvements
 
 - **X API lookups share a conservative request budget:** Request starts are coordinated across tabs and paced from X's remaining/reset headers, reserving 15% for account cards you open. In the final minute of each window that reserve is released to timeline lookups, so it isn't wasted. A server rate-limit cooldown is shared with page-context lookups and survives background restarts.
