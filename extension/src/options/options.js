@@ -607,7 +607,7 @@ async function exportBackup() {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `x-posed-backup-${new Date().toISOString().split('T')[0]}.json`;
+        link.download = `xai-backup-${new Date().toISOString().split('T')[0]}.json`;
         link.click();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
         showSaveStatus('Backup exported');

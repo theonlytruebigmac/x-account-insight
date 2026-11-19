@@ -40,17 +40,17 @@ function harness() {
     };
     const document = { cookie: 'twid=u%3D111', querySelector: () => null };
     const event = (type, detail) => window.dispatchEvent(new CustomEvent(type, { detail: JSON.stringify(detail) }));
-    window.addEventListener('x-posed-fetch-user-info-result', event => results.push(JSON.parse(event.detail)));
-    // Stand in for content-script.js's x-posed-acquire-rate-slot bridge (not under test
+    window.addEventListener('xai-fetch-user-info-result', event => results.push(JSON.parse(event.detail)));
+    // Stand in for content-script.js's xai-acquire-rate-slot bridge (not under test
     // here): grant every slot immediately so page-script's real rate-limit gate can pass.
-    window.addEventListener('x-posed-acquire-rate-slot', requestEvent => {
+    window.addEventListener('xai-acquire-rate-slot', requestEvent => {
         const { id } = JSON.parse(requestEvent.detail || '{}');
-        event('x-posed-rate-limit-slot-result', { id, success: true, waitMs: 0 });
+        event('xai-rate-limit-slot-result', { id, success: true, waitMs: 0 });
     });
     vm.runInNewContext(source, { window, document, location: new URL('https://x.com/home'),
         CustomEvent, XMLHttpRequest, Response, Headers, URL, console, performance, setTimeout, clearTimeout,
         AbortController, fetch: window.fetch });
-    const lookup = (id, options = {}) => event('x-posed-fetch-user-info', {
+    const lookup = (id, options = {}) => event('xai-fetch-user-info', {
         id, screenName: 'sample', viewer: 'id:111', ...options
     });
     async function capture(token = 'synthetic-session-a') {
@@ -131,7 +131,7 @@ await check('An account switch discards its pending reply and clears prior page 
     const h = harness(); await h.capture();
     h.lookup('old', { fullMetadata: true }); await tick();
     h.document.cookie = 'twid=u%3D333';
-    h.event('x-posed-reset-headers', {});
+    h.event('xai-reset-headers', {});
     await h.reply(h.requests[0]);
     assert.equal(h.results[0].code, 'CANCELLED');
     h.lookup('new', { viewer: 'id:333', fullMetadata: true }); await tick();
@@ -142,7 +142,7 @@ await check('An account switch discards its pending reply and clears prior page 
 await check('A same-viewer reset cannot resurrect an earlier account generation', async () => {
     const h = harness(); await h.capture();
     h.lookup('old', { fullMetadata: true }); await tick();
-    h.event('x-posed-reset-headers', {});
+    h.event('xai-reset-headers', {});
     await h.reply(h.requests[0]);
     assert.equal(h.results[0].code, 'CANCELLED');
 });

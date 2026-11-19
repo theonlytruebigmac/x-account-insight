@@ -254,8 +254,8 @@ export const MESSAGE_TYPES = {
     THEME_UPDATED: 'THEME_UPDATED'
 
     // NOTE: page script ↔ content script does NOT go through MESSAGE_TYPES. It uses
-    // CustomEvents named 'x-posed-headers-captured', 'x-posed-fetch-user-info' and
-    // 'x-posed-fetch-user-info-result', declared locally in page-script.js — the page
+    // CustomEvents named 'xai-headers-captured', 'xai-fetch-user-info' and
+    // 'xai-fetch-user-info-result', declared locally in page-script.js — the page
     // script runs in the MAIN world and cannot import from here.
 };
 

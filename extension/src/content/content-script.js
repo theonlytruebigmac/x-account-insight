@@ -125,7 +125,7 @@ function fetchUserInfoViaPage(screenName, { fullMetadata = false, priority = fal
             forget();
             resolve(result);
         };
-        removeListener = current.listen(window, 'x-posed-fetch-user-info-result', event => {
+        removeListener = current.listen(window, 'xai-fetch-user-info-result', event => {
             let result;
             try { result = JSON.parse(event.detail || '{}'); } catch { return; }
             if (result.id === id) {
@@ -137,7 +137,7 @@ function fetchUserInfoViaPage(screenName, { fullMetadata = false, priority = fal
             success: false, code: 'TIMEOUT', error: 'Timed out waiting for page fetch'
         }), 10000);
         forget = current.add(() => finish(cancelledResponse()));
-        window.dispatchEvent(new CustomEvent('x-posed-fetch-user-info', {
+        window.dispatchEvent(new CustomEvent('xai-fetch-user-info', {
             detail: JSON.stringify({ id, screenName, fullMetadata, priority, viewer })
         }));
     });
@@ -218,7 +218,7 @@ function injectPageScript(current) {
 function setupPageScriptListener(current) {
     const publishRateLimitState = status => {
         if (!status?.success) return;
-        window.dispatchEvent(new CustomEvent('x-posed-rate-limit-state-updated', {
+        window.dispatchEvent(new CustomEvent('xai-rate-limit-state-updated', {
             detail: JSON.stringify({
                 resetTime: status.resetTime,
                 rateLimitBudget: status.rateLimitBudget
@@ -226,7 +226,7 @@ function setupPageScriptListener(current) {
         }));
     };
 
-    current.listen(window, 'x-posed-headers-captured', async event => {
+    current.listen(window, 'xai-headers-captured', async event => {
         let headers;
         try {
             ({ headers } = JSON.parse(event.detail || '{}'));
@@ -250,13 +250,13 @@ function setupPageScriptListener(current) {
         }
     });
 
-    current.listen(window, 'x-posed-request-rate-limit-state', () => {
+    current.listen(window, 'xai-request-rate-limit-state', () => {
         void sendMessage({ type: MESSAGE_TYPES.GET_RATE_LIMIT_STATUS })
             .then(publishRateLimitState)
             .catch(error => console.warn('X Account Insight: Could not load X rate-limit state:', error.message));
     });
 
-    current.listen(window, 'x-posed-rate-limit-state', event => {
+    current.listen(window, 'xai-rate-limit-state', event => {
         let state;
         try {
             state = JSON.parse(event.detail || '{}');
@@ -267,7 +267,7 @@ function setupPageScriptListener(current) {
             .catch(error => console.warn('X Account Insight: Could not share X rate-limit state:', error.message));
     });
 
-    current.listen(window, 'x-posed-acquire-rate-slot', async event => {
+    current.listen(window, 'xai-acquire-rate-slot', async event => {
         let request;
         try {
             request = JSON.parse(event.detail || '{}');
@@ -284,7 +284,7 @@ function setupPageScriptListener(current) {
         } catch (error) {
             response = { success: false, code: 'NETWORK_ERROR', error: error.message };
         }
-        window.dispatchEvent(new CustomEvent('x-posed-rate-limit-slot-result', {
+        window.dispatchEvent(new CustomEvent('xai-rate-limit-slot-result', {
             detail: JSON.stringify({ id: request.id, ...response })
         }));
     });
@@ -360,7 +360,7 @@ function beginProfileContextChange(state) {
         csrfToken = getCsrfToken();
         // Page credentials and passive relationship observations belong to the
         // current viewer; public account observations remain warm.
-        window.dispatchEvent(new CustomEvent('x-posed-reset-headers'));
+        window.dispatchEvent(new CustomEvent('xai-reset-headers'));
     }
     syncEnrichmentSetting();
     syncFollowingSetting(true);
@@ -423,7 +423,7 @@ function applyProfileSnapshot(snapshot, state) {
  * effect immediately rather than at the next reload.
  */
 function syncEnrichmentSetting() {
-    window.dispatchEvent(new CustomEvent('x-posed-set-enrichment', {
+    window.dispatchEvent(new CustomEvent('xai-set-enrichment', {
         detail: JSON.stringify({ enabled: settingsLoaded && isEnabled && settings.profileEnrichment !== false })
     }));
 }
@@ -436,7 +436,7 @@ function syncFollowingSetting(force = false) {
     const changed = previous.generation !== context.generation;
     syncFollowingMonitor(shouldMonitorViewer());
     if (changed || force) {
-        window.dispatchEvent(new CustomEvent('x-posed-set-following', { detail: JSON.stringify(context) }));
+        window.dispatchEvent(new CustomEvent('xai-set-following', { detail: JSON.stringify(context) }));
         // Clearing the old viewer must also remove any already-rendered exemptions.
         if (changed && isEnabled && !isCleanedUp) {
             updateBlockedTweets(currentFilters());
@@ -460,7 +460,7 @@ function syncPostRelationsSetting(force = false) {
     syncFollowingMonitor(shouldMonitorViewer());
     if (changed || force) {
         // The page transport needs only the preference and generation, not viewer identity.
-        window.dispatchEvent(new CustomEvent('x-posed-set-post-relations', {
+        window.dispatchEvent(new CustomEvent('xai-set-post-relations', {
             detail: JSON.stringify({ enabled: context.enabled, generation: context.generation })
         }));
         if (changed && isEnabled && !isCleanedUp) updateBlockedTweets(currentFilters());
@@ -468,8 +468,8 @@ function syncPostRelationsSetting(force = false) {
 }
 
 function setupPostRelationsListener(current) {
-    current.listen(window, 'x-posed-page-ready', () => syncPostRelationsSetting(true));
-    current.listen(window, 'x-posed-post-relations', event => {
+    current.listen(window, 'xai-page-ready', () => syncPostRelationsSetting(true));
+    current.listen(window, 'xai-post-relations', event => {
         if (current.disposed || !settingsLoaded || !isEnabled || isCleanedUp || settings.hideRelatedPosts !== true) return;
         syncPostRelationsSetting();
         // Decode only bounded primitive batches, then validate/cache by generation.
@@ -485,8 +485,8 @@ function setupPostRelationsListener(current) {
 }
 
 function setupFollowingListener(current) {
-    current.listen(window, 'x-posed-page-ready', () => syncFollowingSetting(true));
-    current.listen(window, 'x-posed-following-reset', () => {
+    current.listen(window, 'xai-page-ready', () => syncFollowingSetting(true));
+    current.listen(window, 'xai-following-reset', () => {
         if (current.disposed || !settingsLoaded || !isEnabled || settings.alwaysShowFollowing !== true) return;
         clearFollowing();
         syncFollowingSetting(true);
@@ -496,7 +496,7 @@ function setupFollowingListener(current) {
         updateBlockedTweets(currentFilters());
         hovercard.syncFilters();
     });
-    current.listen(window, 'x-posed-following', event => {
+    current.listen(window, 'xai-following', event => {
         if (current.disposed || !settingsLoaded || !isEnabled || settings.alwaysShowFollowing !== true) return;
         syncFollowingSetting();
         if (typeof event.detail !== 'string' || event.detail.length > FOLLOWING_LIMITS.MAX_RELAY_LENGTH) return;
@@ -616,8 +616,8 @@ function setupProfileListener(current) {
         }
     };
 
-    current.listen(window, 'x-posed-page-ready', onReady);
-    current.listen(window, 'x-posed-profiles', onProfiles);
+    current.listen(window, 'xai-page-ready', onReady);
+    current.listen(window, 'xai-profiles', onProfiles);
     current.add(clearProfiles);
 }
 
@@ -627,7 +627,7 @@ function setupProfileListener(current) {
 function setupBackgroundListener(current) {
     const messageHandler = (message, sender, sendResponse) => {
         if (message.type === MESSAGE_TYPES.RATE_LIMIT_STATE_UPDATED) {
-            window.dispatchEvent(new CustomEvent('x-posed-rate-limit-state-updated', {
+            window.dispatchEvent(new CustomEvent('xai-rate-limit-state-updated', {
                 detail: JSON.stringify(message.payload || {})
             }));
             sendResponse({ success: true });

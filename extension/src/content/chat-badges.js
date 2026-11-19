@@ -4,7 +4,7 @@ import { normalizeAccountId } from '../shared/constants.js';
 import { readFollowingViewer } from '../shared/following-data.js';
 
 const CHAT_ROWS = '[data-testid^="dm-conversation-item-"], [data-testid^="dm-message-request-item-"], [data-testid="dm-conversation-header"]';
-const OWN_UI = '.x-chat-badge-mount, #x-posed-hovercard';
+const OWN_UI = '.x-chat-badge-mount, #xai-hovercard';
 const validHandle = value => typeof value === 'string' && value.length > 0 && value.length <= 15 && !/[^a-zA-Z0-9_]/.test(value);
 
 /** Never interpret an @mention in the message preview as its author. */
@@ -320,7 +320,7 @@ export function createChatBadges({ getSettings, getViewer = readFollowingViewer,
             if (!enabled) { identities.clear(); handles.clear(); }
         }
         if (appearance !== nextAppearance) { clear(); appearance = nextAppearance; }
-        window.dispatchEvent(new CustomEvent('x-posed-set-chat', { detail: JSON.stringify({ enabled }) }));
+        window.dispatchEvent(new CustomEvent('xai-set-chat', { detail: JSON.stringify({ enabled }) }));
         if (started && enabled) {
             for (const root of scopes.keys()) discover(root);
         }
@@ -351,9 +351,9 @@ export function createChatBadges({ getSettings, getViewer = readFollowingViewer,
         }
         if (typeof IntersectionObserver === 'function') visibility = new IntersectionObserver(schedule);
         watchRoot(document);
-        window.addEventListener('x-posed-chat-users', onUsers);
-        window.addEventListener('x-posed-page-ready', refresh);
-        window.addEventListener('x-posed-shadow-root-ready', shadowRootReady);
+        window.addEventListener('xai-chat-users', onUsers);
+        window.addEventListener('xai-page-ready', refresh);
+        window.addEventListener('xai-shadow-root-ready', shadowRootReady);
         window.addEventListener('resize', schedule);
         refresh();
     }
@@ -361,13 +361,13 @@ export function createChatBadges({ getSettings, getViewer = readFollowingViewer,
     function dispose() {
         if (disposed) return;
         disposed = true; generation++;
-        window.dispatchEvent(new CustomEvent('x-posed-set-chat', { detail: '{"enabled":false}' }));
+        window.dispatchEvent(new CustomEvent('xai-set-chat', { detail: '{"enabled":false}' }));
         for (const [root, scope] of scopes) releaseRoot(root, scope);
         resize?.disconnect(); visibility?.disconnect();
         if (frame !== null) cancelAnimationFrame(frame);
-        window.removeEventListener('x-posed-chat-users', onUsers);
-        window.removeEventListener('x-posed-page-ready', refresh);
-        window.removeEventListener('x-posed-shadow-root-ready', shadowRootReady);
+        window.removeEventListener('xai-chat-users', onUsers);
+        window.removeEventListener('xai-page-ready', refresh);
+        window.removeEventListener('xai-shadow-root-ready', shadowRootReady);
         window.removeEventListener('resize', schedule);
         clear(); identities.clear(); handles.clear(); pending.clear(); retries.clear(); observed.clear();
     }

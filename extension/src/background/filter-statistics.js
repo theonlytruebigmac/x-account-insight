@@ -7,7 +7,7 @@
 import { normalizeStatisticsLocation, normalizeStatisticsDevice,
     STATISTICS_UNKNOWN as UNKNOWN } from '../shared/statistics-values.js';
 
-const DATABASE_NAME = 'x-posed-filter-statistics';
+const DATABASE_NAME = 'xai-filter-statistics';
 const MAX_BATCH_SIZE = 100;
 
 function invalidInput(message) {

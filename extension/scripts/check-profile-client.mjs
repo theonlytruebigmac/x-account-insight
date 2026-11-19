@@ -519,7 +519,7 @@ await check('Content switches reset private viewer state and apply every filter 
         ${production}`, context);
     assert.equal(vm.runInContext('currentAccountId()', context), '111');
     vm.runInContext("beginProfileContextChange({accountId:'222',profileId:'personal'})", context);
-    assert.ok(events.includes('x-posed-reset-headers'));
+    assert.ok(events.includes('xai-reset-headers'));
     assert.ok(events.includes('following-clear'));
     assert.ok(events.includes('relations-clear'));
     assert.ok(events.includes('hover-reset'));
@@ -536,7 +536,7 @@ await check('Content switches reset private viewer state and apply every filter 
     assert.equal(Object.keys(tracker.snapshot()).length, FILTER_SOURCES.length + 1);
     events.length = 0;
     vm.runInContext("beginProfileContextChange({accountId:'222',profileId:'work'})", context);
-    assert.equal(events.includes('x-posed-reset-headers'), false, 'A profile-only selection does not invalidate the same viewer’s credentials');
+    assert.equal(events.includes('xai-reset-headers'), false, 'A profile-only selection does not invalidate the same viewer’s credentials');
 });
 
 console.log(`\n${groups} profile client/context checks passed.`);

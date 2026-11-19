@@ -51,7 +51,7 @@ function formatCompactCount(value) {
     }
 }
 
-const CARD_ID = 'x-posed-hovercard';
+const CARD_ID = 'xai-hovercard';
 
 /** Source timestamps order observations; the time a hover cache was filled does not. */
 export function hasNewerObservation(current, candidate) {
@@ -219,20 +219,20 @@ function profileUrlForUserId(userId) {
 }
 
 function createUserIdValue(userId) {
-    const value = createEl('span', 'x-posed-user-id-value', safeText(userId, 40));
+    const value = createEl('span', 'xai-user-id-value', safeText(userId, 40));
     const url = profileUrlForUserId(userId);
     if (!url) return value;
 
-    const control = createEl('span', 'x-posed-user-id-control');
+    const control = createEl('span', 'xai-user-id-control');
     control.dataset.xUserId = userId;
-    const button = createEl('button', 'x-posed-user-id-copy');
+    const button = createEl('button', 'xai-user-id-copy');
     button.type = 'button';
-    const icon = createEl('span', 'x-posed-user-id-icon');
+    const icon = createEl('span', 'xai-user-id-icon');
     icon.setAttribute('aria-hidden', 'true');
-    const status = createEl('span', 'x-posed-sr-only');
+    const status = createEl('span', 'xai-sr-only');
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
-    const fallback = createEl('a', 'x-posed-user-id-fallback x-posed-link', url);
+    const fallback = createEl('a', 'xai-user-id-fallback xai-link', url);
     fallback.href = url;
     fallback.target = '_blank';
     fallback.rel = 'noreferrer noopener';
@@ -241,14 +241,14 @@ function createUserIdValue(userId) {
     let pending = false;
     let resetTimer = null;
     const isCurrent = () => button.isConnected &&
-        button.closest('.x-posed-user-id-control')?.dataset.xUserId === userId;
+        button.closest('.xai-user-id-control')?.dataset.xUserId === userId;
     const feedback = (message = '', success = false) => {
         button.removeAttribute('title');
         button.dataset.xTooltipHeading = message || 'Copy profile link';
         button.dataset.xTooltipDescription = success ? 'Paste it to share a link to this account.'
             : 'Copies a link based on this account’s permanent User ID. It still works if the handle changes.';
         button.setAttribute('aria-label', message || `Copy permanent profile link for user ID ${userId}`);
-        button.classList.toggle('x-posed-user-id-copy--success', success);
+        button.classList.toggle('xai-user-id-copy--success', success);
         icon.replaceChildren(dialogIcon(success ? 'check' : 'copy', 13));
         status.textContent = message;
     };
@@ -285,18 +285,18 @@ function createUserIdValue(userId) {
 }
 
 function createTag({ label, tone = 'neutral', title = '' }) {
-    const tag = createEl('span', `x-posed-tag x-posed-tag-${tone}`);
+    const tag = createEl('span', `xai-tag xai-tag-${tone}`);
     if (title) tag.title = safeText(title, 200);
     tag.append(dialogIcon(tone === 'neutral' ? 'shield' : 'verified', 13), document.createTextNode(safeText(label, 24)));
     return tag;
 }
 
 function createSignalValue(icon, text) {
-    const value = createEl('span', 'x-posed-signal-value');
-    value.appendChild(createEl('span', 'x-posed-signal-text', safeText(text, 80)));
+    const value = createEl('span', 'xai-signal-value');
+    value.appendChild(createEl('span', 'xai-signal-text', safeText(text, 80)));
     // A trailing, fixed-width rail keeps the flag and device aligned even when
     // their labels wrap to different lengths.
-    const iconWrap = createEl('span', 'x-posed-signal-icon');
+    const iconWrap = createEl('span', 'xai-signal-icon');
     iconWrap.setAttribute('aria-hidden', 'true');
     if (icon) iconWrap.appendChild(icon);
     value.appendChild(iconWrap);
@@ -304,12 +304,12 @@ function createSignalValue(icon, text) {
 }
 
 function createDateValue(date, ageYears = null) {
-    const value = createEl('span', 'x-posed-date-value');
+    const value = createEl('span', 'xai-date-value');
     const time = createEl('time', '', formatShortDate(date));
     time.dateTime = date.toISOString();
     value.appendChild(time);
     if (typeof ageYears === 'number') {
-        const age = createEl('span', 'x-posed-account-age', `· ${ageYears}y`);
+        const age = createEl('span', 'xai-account-age', `· ${ageYears}y`);
         age.setAttribute('aria-label', `${ageYears} ${ageYears === 1 ? 'year' : 'years'} old`);
         age.title = age.getAttribute('aria-label');
         value.appendChild(age);
@@ -318,8 +318,8 @@ function createDateValue(date, ageYears = null) {
 }
 
 function setLocationWarningHelp(card, open) {
-    const button = card?.querySelector('.x-posed-warning-why');
-    const help = card?.querySelector('.x-posed-warning-help');
+    const button = card?.querySelector('.xai-warning-why');
+    const help = card?.querySelector('.xai-warning-help');
     if (!button || !help) return;
     button.setAttribute('aria-expanded', String(open));
     help.hidden = !open;
@@ -349,18 +349,18 @@ function setLocationWarningHelp(card, open) {
 }
 
 function createLocationWarning(card, helpParent = card) {
-    const warning = createEl('div', 'x-posed-card-warning');
-    const copy = createEl('span', 'x-posed-warning-copy', 'Location may be inaccurate');
-    const button = createEl('button', 'x-posed-warning-why', 'Why?');
+    const warning = createEl('div', 'xai-card-warning');
+    const copy = createEl('span', 'xai-warning-copy', 'Location may be inaccurate');
+    const button = createEl('button', 'xai-warning-why', 'Why?');
     button.type = 'button';
     button.setAttribute('aria-label', 'Why location may be inaccurate');
     button.setAttribute('aria-expanded', 'false');
-    button.setAttribute('aria-controls', 'x-posed-location-help');
-    button.setAttribute('aria-describedby', 'x-posed-location-help');
-    const help = createEl('div', 'x-posed-warning-help');
-    help.appendChild(createEl('span', 'x-posed-warning-help-copy',
+    button.setAttribute('aria-controls', 'xai-location-help');
+    button.setAttribute('aria-describedby', 'xai-location-help');
+    const help = createEl('div', 'xai-warning-help');
+    help.appendChild(createEl('span', 'xai-warning-help-copy',
         'X’s partner flags possible VPN/proxy use. Internet providers can use proxies automatically. This is not proof of VPN use.'));
-    help.id = 'x-posed-location-help';
+    help.id = 'xai-location-help';
     help.setAttribute('role', 'tooltip');
     help.hidden = true;
 
@@ -398,16 +398,16 @@ function createLocationWarning(card, helpParent = card) {
 }
 
 function createRow({ label, value, primary = false }) {
-    let cls = 'x-posed-row';
-    if (primary) cls += ' x-posed-row--primary';
+    let cls = 'xai-row';
+    if (primary) cls += ' xai-row--primary';
     const row = createEl('div', cls);
     row.dataset.xCardKey = label;
 
-    const left = createEl('div', 'x-posed-row-left');
-    const labelEl = createEl('span', 'x-posed-row-label', label);
+    const left = createEl('div', 'xai-row-left');
+    const labelEl = createEl('span', 'xai-row-label', label);
     left.appendChild(labelEl);
 
-    const right = createEl('div', 'x-posed-row-right');
+    const right = createEl('div', 'xai-row-right');
     if (value instanceof Node) {
         right.appendChild(value);
     } else {
@@ -423,7 +423,7 @@ function ensureCard() {
     let card = document.getElementById(CARD_ID);
     if (card && card.isConnected) return card;
 
-    card = createEl('div', 'x-posed-hovercard');
+    card = createEl('div', 'xai-hovercard');
     card.id = CARD_ID;
     card.setAttribute('role', 'dialog');
     card.style.zIndex = String((Z_INDEX?.TOAST || 1000001) + 5);
@@ -455,7 +455,7 @@ function positionCard(card, anchorEl) {
     const margin = 10;
     // Issue #21: never let the inline max-width exceed the viewport, so the card
     // stays fully visible on narrow/mobile widths. Kept in sync with content.css
-    // (.x-posed-hovercard width:340px / max-width:calc(100vw - 20px)).
+    // (.xai-hovercard width:340px / max-width:calc(100vw - 20px)).
     const maxWidth = Math.min(340, window.innerWidth - margin * 2);
 
     // Temporarily show to measure.
@@ -523,7 +523,7 @@ function patchCardNode(current, next) {
     }
     // Do not reload a displayed avatar on metadata-only refreshes, or retry a
     // failed URL on every patch. A changed URL gets its own load/error handlers.
-    if (current.nodeType === Node.ELEMENT_NODE && current.classList.contains('x-posed-card-avatar')) {
+    if (current.nodeType === Node.ELEMENT_NODE && current.classList.contains('xai-card-avatar')) {
         if (current.dataset.xAvatarUrl !== next.dataset.xAvatarUrl) {
             current.replaceWith(next);
             return next;
@@ -532,11 +532,11 @@ function patchCardNode(current, next) {
         return current;
     }
     // Its explanation owns interaction state and listeners, not account data.
-    if (current.nodeType === Node.ELEMENT_NODE && current.classList.contains('x-posed-card-warning')) return current;
+    if (current.nodeType === Node.ELEMENT_NODE && current.classList.contains('xai-card-warning')) return current;
     // The header exception control owns live membership, save state and focus.
     // Metadata refreshes render a placeholder, never a replacement control.
-    if (current.nodeType === Node.ELEMENT_NODE && current.classList.contains('x-posed-allowlist-control')) return current;
-    if (current.nodeType === Node.ELEMENT_NODE && current.classList.contains('x-posed-user-id-control')) {
+    if (current.nodeType === Node.ELEMENT_NODE && current.classList.contains('xai-allowlist-control')) return current;
+    if (current.nodeType === Node.ELEMENT_NODE && current.classList.contains('xai-user-id-control')) {
         if (current.dataset.xUserId === next.dataset.xUserId) return current;
         // A genuinely changed ID needs fresh listeners and must not inherit an
         // earlier clipboard result. Same-ID enrichment keeps focus and feedback.
@@ -580,15 +580,15 @@ function patchCardNode(current, next) {
 function buildCardContent({ screenName, displayName = '', displayNamePresentation = null, fallbackName = '', info, avatar = null, loading = false, errorText = '', allowlistControl = null, allowlistStatus = null, imageControl = null, quickFilterControl = null, onClose, update = false }) {
     const card = ensureCard();
     const focusedElement = card.contains(document.activeElement) ? document.activeElement : null;
-    const focusedClose = focusedElement?.classList.contains('x-posed-card-close');
-    const focusedLink = focusedElement?.classList.contains('x-posed-link');
-    const focusedBody = focusedElement?.classList.contains('x-posed-card-body');
-    const focusedWarning = focusedElement?.classList.contains('x-posed-warning-why');
-    const focusedUserId = focusedElement?.classList.contains('x-posed-user-id-copy');
+    const focusedClose = focusedElement?.classList.contains('xai-card-close');
+    const focusedLink = focusedElement?.classList.contains('xai-link');
+    const focusedBody = focusedElement?.classList.contains('xai-card-body');
+    const focusedWarning = focusedElement?.classList.contains('xai-warning-why');
+    const focusedUserId = focusedElement?.classList.contains('xai-user-id-copy');
     const accountKey = String(screenName || '').toLowerCase();
     const scrollTop = card.dataset.xScreenName === accountKey
-        ? card.querySelector('.x-posed-card-body')?.scrollTop || 0 : 0;
-    const patch = update && card.dataset.xScreenName === accountKey && card.querySelector('.x-posed-card-body');
+        ? card.querySelector('.xai-card-body')?.scrollTop || 0 : 0;
+    const patch = update && card.dataset.xScreenName === accountKey && card.querySelector('.xai-card-body');
     const rendered = patch ? createEl('div') : card;
     card.dataset.xScreenName = accountKey;
     if (!patch) card.replaceChildren();
@@ -597,12 +597,12 @@ function buildCardContent({ screenName, displayName = '', displayNamePresentatio
     const meta = info?.meta || {};
 
     // Header
-    const header = createEl('div', 'x-posed-card-header');
+    const header = createEl('div', 'xai-card-header');
 
     // Prefer the avatar already owned by this author on X. Image loading never
     // holds up the card or adds another account lookup.
     if (avatar?.url) {
-        const picture = createEl('img', 'x-posed-card-avatar');
+        const picture = createEl('img', 'xai-card-avatar');
         picture.alt = '';
         picture.width = 48;
         picture.height = 48;
@@ -613,28 +613,28 @@ function buildCardContent({ screenName, displayName = '', displayNamePresentatio
         picture.dataset.xAvatarUrl = avatar.url;
         picture.addEventListener('error', () => {
             picture.hidden = true;
-            picture.closest('.x-posed-card-header')?.removeAttribute('data-has-avatar');
+            picture.closest('.xai-card-header')?.removeAttribute('data-has-avatar');
         });
         header.dataset.hasAvatar = 'true';
         header.appendChild(picture);
     }
-    const titleWrap = createEl('div', 'x-posed-title');
-    const nameLine = createEl('div', 'x-posed-name-line');
-    const nameEl = createEl('span', 'x-posed-name');
+    const titleWrap = createEl('div', 'xai-title');
+    const nameLine = createEl('div', 'xai-name-line');
+    const nameEl = createEl('span', 'xai-name');
     renderDisplayName(nameEl, displayName || meta.name || fallbackName || screenName, displayNamePresentation);
-    const handleEl = createEl('span', 'x-posed-handle', `@${safeText(screenName, 20)}`);
+    const handleEl = createEl('span', 'xai-handle', `@${safeText(screenName, 20)}`);
     handleEl.title = handleEl.textContent;
-    const handleLine = createEl('div', 'x-posed-handle-line');
+    const handleLine = createEl('div', 'xai-handle-line');
     handleLine.appendChild(handleEl);
-    const exceptionControl = allowlistControl || (patch && card.querySelector('.x-posed-allowlist-control')
-        ? createEl('div', 'x-posed-allowlist-control') : null);
+    const exceptionControl = allowlistControl || (patch && card.querySelector('.xai-allowlist-control')
+        ? createEl('div', 'xai-allowlist-control') : null);
     nameLine.appendChild(nameEl);
 
     // Business/Government take precedence: X also marks some gold accounts
     // is_blue_verified, so that flag alone does not identify the checkmark color.
     const verificationInfo = getAccountVerification(meta);
     if (verificationInfo) {
-        const verification = createEl('span', 'x-posed-inline-verification');
+        const verification = createEl('span', 'xai-inline-verification');
         verification.dataset.verification = verificationInfo.type;
         verification.setAttribute('role', 'img');
         verification.setAttribute('aria-label', verificationInfo.label);
@@ -644,7 +644,7 @@ function buildCardContent({ screenName, displayName = '', displayNamePresentatio
     }
 
     // Less common account statuses still keep their explicit labels.
-    const tags = createEl('div', 'x-posed-tags');
+    const tags = createEl('div', 'xai-tags');
     if (meta.identityVerified) {
         tags.appendChild(createTag({ label: 'Identity verified', tone: 'green', title: 'Identity verified' }));
     }
@@ -659,9 +659,9 @@ function buildCardContent({ screenName, displayName = '', displayNamePresentatio
     if (tags.childNodes.length > 0) titleWrap.appendChild(tags);
 
     header.appendChild(titleWrap);
-    const headerActions = createEl('div', 'x-posed-header-actions');
+    const headerActions = createEl('div', 'xai-header-actions');
     if (exceptionControl) headerActions.appendChild(exceptionControl);
-    const closeButton = createEl('button', 'x-posed-card-close');
+    const closeButton = createEl('button', 'xai-card-close');
     closeButton.type = 'button';
     closeButton.setAttribute('aria-label', 'Close account details');
     closeButton.title = 'Close account details';
@@ -671,14 +671,14 @@ function buildCardContent({ screenName, displayName = '', displayNamePresentatio
     header.appendChild(headerActions);
 
     // Body
-    const body = createEl('div', 'x-posed-card-body');
+    const body = createEl('div', 'xai-card-body');
     body.tabIndex = 0;
     body.setAttribute('role', 'region');
     body.setAttribute('aria-label', 'Account information');
 
     // Keep known location and connection details visible even when richer
     // account metadata is unavailable.
-    const signals = createEl('div', 'x-posed-card-signals');
+    const signals = createEl('div', 'xai-card-signals');
     if (info?.location) {
         signals.appendChild(createRow({
             label: 'Location',
@@ -705,7 +705,7 @@ function buildCardContent({ screenName, displayName = '', displayNamePresentatio
     // simply absent for an account we have not seen in a response yet.
     const profile = getProfile(screenName);
     if (profile) {
-        const stats = createEl('div', 'x-posed-card-stats');
+        const stats = createEl('div', 'xai-card-stats');
         stats.setAttribute('role', 'group');
         stats.setAttribute('aria-label', 'Account activity');
         const values = [
@@ -717,15 +717,15 @@ function buildCardContent({ screenName, displayName = '', displayNamePresentatio
         for (const { label, value } of values) {
             const exactCount = formatCount(value);
             if (exactCount === null) continue;
-            const stat = createEl('div', 'x-posed-stat');
+            const stat = createEl('div', 'xai-stat');
             stat.dataset.xCardKey = label;
             stat.title = `${exactCount} ${label}`;
             stat.setAttribute('role', 'group');
             stat.setAttribute('aria-label', stat.title);
-            const number = createEl('span', 'x-posed-stat-value', formatCompactCount(value));
+            const number = createEl('span', 'xai-stat-value', formatCompactCount(value));
             number.title = exactCount;
             number.setAttribute('aria-label', exactCount);
-            stat.append(number, createEl('span', 'x-posed-stat-label', label));
+            stat.append(number, createEl('span', 'xai-stat-label', label));
             stats.appendChild(stat);
         }
         if (stats.childNodes.length) {
@@ -734,7 +734,7 @@ function buildCardContent({ screenName, displayName = '', displayNamePresentatio
         }
     }
 
-    const metadata = createEl('div', 'x-posed-card-metadata');
+    const metadata = createEl('div', 'xai-card-metadata');
     const createdAt = parseCreatedAt(meta.createdAt);
     const ageYears = yearsSince(createdAt);
     if (createdAt) {
@@ -758,7 +758,7 @@ function buildCardContent({ screenName, displayName = '', displayNamePresentatio
 
         if (aff?.badgeUrl && isTrustedTwimgUrl(aff.badgeUrl)) {
             const badgeImg = document.createElement('img');
-            badgeImg.className = 'x-posed-affiliate-badge';
+            badgeImg.className = 'xai-affiliate-badge';
             badgeImg.src = aff.badgeUrl;
             badgeImg.alt = '';
             badgeImg.loading = 'lazy';
@@ -771,7 +771,7 @@ function buildCardContent({ screenName, displayName = '', displayNamePresentatio
         // Link the affiliation NAME itself when a URL is present (no separate arrow).
         if (aff?.url && isSafeHttpsUrl(aff.url)) {
             const link = document.createElement('a');
-            link.className = 'x-posed-link';
+            link.className = 'xai-link';
             link.href = aff.url;
             link.target = '_blank';
             link.rel = 'noreferrer noopener';
@@ -788,13 +788,13 @@ function buildCardContent({ screenName, displayName = '', displayNamePresentatio
     const accountId = observedAccountId(info, profile);
     if (accountId) {
         const identifier = createRow({ label: 'User ID', value: createUserIdValue(accountId) });
-        identifier.classList.add('x-posed-row--identifier');
+        identifier.classList.add('xai-row--identifier');
         metadata.appendChild(identifier);
     }
     if (metadata.childNodes.length) {
         metadata.setAttribute('role', 'group');
         metadata.setAttribute('aria-label', 'Account details');
-        metadata.prepend(createEl('div', 'x-posed-metadata-heading', 'Account details'));
+        metadata.prepend(createEl('div', 'xai-metadata-heading', 'Account details'));
         body.appendChild(metadata);
     }
 
@@ -802,25 +802,25 @@ function buildCardContent({ screenName, displayName = '', displayNamePresentatio
     // they add noise without providing actionable signal.
 
     if (errorText) {
-        const error = createEl('div', 'x-posed-card-status x-posed-card-status--error', safeText(errorText, 240));
+        const error = createEl('div', 'xai-card-status xai-card-status--error', safeText(errorText, 240));
         error.setAttribute('role', 'status');
         body.appendChild(error);
     } else if (loading) {
-        const status = createEl('div', 'x-posed-card-status', 'Fetching account details…');
+        const status = createEl('div', 'xai-card-status', 'Fetching account details…');
         status.setAttribute('role', 'status');
         body.appendChild(status);
     }
 
     // Empty states
     if (body.childNodes.length === 0) {
-        body.appendChild(createEl('div', 'x-posed-empty', 'No extra account metadata available.'));
+        body.appendChild(createEl('div', 'xai-empty', 'No extra account metadata available.'));
     }
 
     rendered.appendChild(header);
     rendered.appendChild(body);
     if (!patch && (allowlistControl || imageControl || quickFilterControl)) {
-        const footer = createEl('div', 'x-posed-card-actions');
-        const actionRow = createEl('div', 'x-posed-card-action-row');
+        const footer = createEl('div', 'xai-card-actions');
+        const actionRow = createEl('div', 'xai-card-action-row');
         if (quickFilterControl) actionRow.appendChild(quickFilterControl.element);
         if (imageControl) actionRow.appendChild(imageControl.element);
         const sectionCount = Number(!!quickFilterControl) + Number(!!imageControl);
@@ -836,14 +836,14 @@ function buildCardContent({ screenName, displayName = '', displayNamePresentatio
         card.appendChild(footer);
     }
     if (patch) {
-        patchCardNode(card.querySelector('.x-posed-card-header'), header);
-        patchCardNode(card.querySelector('.x-posed-card-body'), body);
-        const help = card.querySelector('.x-posed-warning-help');
+        patchCardNode(card.querySelector('.xai-card-header'), header);
+        patchCardNode(card.querySelector('.xai-card-body'), body);
+        const help = card.querySelector('.xai-warning-help');
         if (info?.locationAccurate !== false) help?.remove();
-        else if (!help) card.appendChild(rendered.querySelector('.x-posed-warning-help'));
+        else if (!help) card.appendChild(rendered.querySelector('.xai-warning-help'));
     }
-    const liveHeader = card.querySelector('.x-posed-card-header');
-    const liveAvatar = liveHeader.querySelector('.x-posed-card-avatar');
+    const liveHeader = card.querySelector('.xai-card-header');
+    const liveAvatar = liveHeader.querySelector('.xai-card-avatar');
     // Populate only the final live image, not a detached patch candidate. This
     // avoids even starting another image load when its URL has not changed.
     if (liveAvatar && liveAvatar.getAttribute('src') !== liveAvatar.dataset.xAvatarUrl) {
@@ -851,16 +851,16 @@ function buildCardContent({ screenName, displayName = '', displayNamePresentatio
     }
     if (liveAvatar && !liveAvatar.hidden) liveHeader.dataset.hasAvatar = 'true';
     else liveHeader.removeAttribute('data-has-avatar');
-    const liveBody = card.querySelector('.x-posed-card-body');
+    const liveBody = card.querySelector('.xai-card-body');
     liveBody.scrollTop = scrollTop;
     // Refreshing metadata must not drop keyboard focus while someone is reading
     // the card or using its account exception control.
     if (focusedElement?.isConnected) focusedElement.focus({ preventScroll: true });
-    else if (focusedClose) card.querySelector('.x-posed-card-close').focus({ preventScroll: true });
+    else if (focusedClose) card.querySelector('.xai-card-close').focus({ preventScroll: true });
     else if (focusedBody) liveBody.focus({ preventScroll: true });
-    else if (focusedUserId) (card.querySelector('.x-posed-user-id-copy') || card.querySelector('.x-posed-card-close')).focus({ preventScroll: true });
-    else if (focusedWarning) (card.querySelector('.x-posed-warning-why') || card.querySelector('.x-posed-card-close')).focus({ preventScroll: true });
-    else if (focusedLink) (card.querySelector('.x-posed-link') || card.querySelector('.x-posed-card-close')).focus({ preventScroll: true });
+    else if (focusedUserId) (card.querySelector('.xai-user-id-copy') || card.querySelector('.xai-card-close')).focus({ preventScroll: true });
+    else if (focusedWarning) (card.querySelector('.xai-warning-why') || card.querySelector('.xai-card-close')).focus({ preventScroll: true });
+    else if (focusedLink) (card.querySelector('.xai-link') || card.querySelector('.xai-card-close')).focus({ preventScroll: true });
     return card;
 }
 
@@ -956,7 +956,7 @@ class HovercardController {
         let control = null;
         const isCurrent = () => control !== null && this.generation === generation && this.viewId === viewId &&
             this.currentScreenName === handle && this.quickFilterState === control &&
-            this.card?.classList.contains('x-posed-hovercard-visible') && this.card.contains(control.element);
+            this.card?.classList.contains('xai-hovercard-visible') && this.card.contains(control.element);
         control = createQuickFilterControl({
             handle, info, ...this.filterContext, writes: this.quickFilterWrites, isCurrent,
             onChange: () => {
@@ -978,8 +978,8 @@ class HovercardController {
      *   Touch devices always use click regardless, since they have no hover at all.
      */
     attach(badgeEl, { screenName, displayName = '', displayNamePresentation = null, info, getInfo = null, csrfToken = null, clickToOpen = false }) {
-        if (!badgeEl || badgeEl.dataset.xPosedHovercardAttached === 'true') return;
-        badgeEl.dataset.xPosedHovercardAttached = 'true';
+        if (!badgeEl || badgeEl.dataset.xAIHovercardAttached === 'true') return;
+        badgeEl.dataset.xAIHovercardAttached = 'true';
         const detailsButton = badgeEl.querySelector('.x-badge-details');
         detailsButton?.setAttribute('aria-haspopup', 'dialog');
         detailsButton?.setAttribute('aria-controls', CARD_ID);
@@ -995,11 +995,11 @@ class HovercardController {
             e.preventDefault();
             e.stopPropagation();
             const open = this.currentAnchor === badgeEl &&
-                this.card?.classList.contains('x-posed-hovercard-visible');
+                this.card?.classList.contains('xai-hovercard-visible');
             if (open && this._clickMode) this.hide();
             else {
                 this.show(badgeEl, { screenName, displayName, displayNamePresentation, info, getInfo, csrfToken, clickToOpen: true });
-                if (e.detail === 0) this.card?.querySelector('.x-posed-card-close')?.focus({ preventScroll: true });
+                if (e.detail === 0) this.card?.querySelector('.xai-card-close')?.focus({ preventScroll: true });
             }
         });
         if (!useClick) {
@@ -1017,12 +1017,12 @@ class HovercardController {
         badgeEl.addEventListener('focusout', this._handleFocusOut);
 
         // Mark for cleanup by content-script cleanup routines.
-        badgeEl.classList.add('x-posed-has-hovercard');
+        badgeEl.classList.add('xai-has-hovercard');
     }
 
     _scheduleHoverIntent(anchorEl, options) {
         this._cancelHoverIntent();
-        const visible = this.card?.classList.contains('x-posed-hovercard-visible');
+        const visible = this.card?.classList.contains('xai-hovercard-visible');
         if (visible && this.currentAnchor === anchorEl) {
             this._handleCardEnter();
             return;
@@ -1079,7 +1079,7 @@ class HovercardController {
         if (event?.type === 'keydown' && event.key !== 'Escape') return;
         if (event?.type === 'visibilitychange' && !document.hidden) return;
         this._cancelHoverIntent();
-        if (this.card?.classList.contains('x-posed-hovercard-visible')) this.hideSoon();
+        if (this.card?.classList.contains('xai-hovercard-visible')) this.hideSoon();
     }
 
     _clearHideTimeout() {
@@ -1116,7 +1116,7 @@ class HovercardController {
 
         this._clearHideTimeout();
 
-        if (this.currentAnchor === anchorEl && this.card?.classList.contains('x-posed-hovercard-visible') &&
+        if (this.currentAnchor === anchorEl && this.card?.classList.contains('xai-hovercard-visible') &&
             !useClick) return;
         this._disposeImageState();
         this._disposeQuickFilters();
@@ -1153,7 +1153,7 @@ class HovercardController {
             allowlistControl: this.allowlistState?.element, allowlistStatus: this.allowlistState?.status, imageControl: this.imageState,
             quickFilterControl: this.quickFilterState, onClose: this._handleClose
         });
-        this.card.classList.add('x-posed-hovercard-visible');
+        this.card.classList.add('xai-hovercard-visible');
         this.actionTooltip = createCardTooltip(this.card);
         this.syncFilters();
         positionCard(this.card, anchorEl);
@@ -1211,7 +1211,7 @@ class HovercardController {
         }
 
         if (this.card) {
-            this.card.classList.remove('x-posed-hovercard-visible');
+            this.card.classList.remove('xai-hovercard-visible');
             this.card.replaceChildren();
         }
 
@@ -1254,7 +1254,7 @@ class HovercardController {
     }
 
     _handleKeyDown(event) {
-        if (event.key !== 'Escape' || !this.card?.classList.contains('x-posed-hovercard-visible')) return;
+        if (event.key !== 'Escape' || !this.card?.classList.contains('xai-hovercard-visible')) return;
         if (this.actionTooltip?.dismiss()) {
             if (this._hasFocus(this.card) || this._hasFocus(this.currentAnchor)) {
                 event.preventDefault();
@@ -1262,7 +1262,7 @@ class HovercardController {
             }
             return;
         }
-        if (this.card.querySelector('.x-posed-warning-why[aria-expanded="true"]')) {
+        if (this.card.querySelector('.xai-warning-why[aria-expanded="true"]')) {
             setLocationWarningHelp(this.card, false);
             event.preventDefault();
             event.stopPropagation();
@@ -1294,7 +1294,7 @@ class HovercardController {
         const viewId = this.viewId;
         queueMicrotask(() => {
             if (this.generation !== generation || this.viewId !== viewId) return;
-            if (!this.card?.classList.contains('x-posed-hovercard-visible')) return;
+            if (!this.card?.classList.contains('xai-hovercard-visible')) return;
             if (!this._hasFocus(this.card) && !this._hasFocus(this.currentAnchor)) this.hideSoon();
         });
     }
@@ -1304,7 +1304,7 @@ class HovercardController {
         const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
         const t = path[0] || e.target;
         if (this.card.contains(t) || path.includes(this.card)) {
-            if (!t.closest?.('.x-posed-warning-why, .x-posed-warning-help')) setLocationWarningHelp(this.card, false);
+            if (!t.closest?.('.xai-warning-why, .xai-warning-help')) setLocationWarningHelp(this.card, false);
             return;
         }
         if (this.currentAnchor && (this.currentAnchor.contains(t) || path.includes(this.currentAnchor))) return;
@@ -1314,7 +1314,7 @@ class HovercardController {
     _isCurrentView(anchorEl, screenName, viewId) {
         return this.viewId === viewId && this.currentAnchor === anchorEl &&
             this.currentScreenName === String(screenName || '').toLowerCase() &&
-            anchorEl?.isConnected && this.card?.classList.contains('x-posed-hovercard-visible');
+            anchorEl?.isConnected && this.card?.classList.contains('xai-hovercard-visible');
     }
 
     _isCurrentAllowlist(state) {
@@ -1330,26 +1330,26 @@ class HovercardController {
     }
 
     _createImageState(handle, viewId) {
-        const element = createEl('div', 'x-posed-export-actions x-posed-footer-section');
+        const element = createEl('div', 'xai-export-actions xai-footer-section');
         element.setAttribute('role', 'group');
-        const heading = createEl('div', 'x-posed-footer-section-heading', 'Card');
-        heading.id = 'x-posed-card-image-heading';
+        const heading = createEl('div', 'xai-footer-section-heading', 'Card');
+        heading.id = 'xai-card-image-heading';
         element.setAttribute('aria-labelledby', heading.id);
-        const controls = createEl('div', 'x-posed-footer-section-controls');
+        const controls = createEl('div', 'xai-footer-section-controls');
         element.append(heading, controls);
-        const status = createEl('div', 'x-posed-export-status');
+        const status = createEl('div', 'xai-export-status');
         status.setAttribute('role', 'status');
         status.setAttribute('aria-live', 'polite');
         status.hidden = true;
         const state = { handle, viewId, generation: this.generation, element, status,
             buttons: [], pending: false, controller: null, resetTimer: null, success: '', message: '', error: false };
         for (const action of ['copy', 'save']) {
-            const button = createEl('button', 'x-posed-export-button x-posed-card-action');
+            const button = createEl('button', 'xai-export-button xai-card-action');
             button.type = 'button';
             button.dataset.action = action;
-            const icon = createEl('span', 'x-posed-card-action-icon');
+            const icon = createEl('span', 'xai-card-action-icon');
             icon.setAttribute('aria-hidden', 'true');
-            button.append(icon, createEl('span', 'x-posed-card-action-label', action === 'copy' ? 'Copy' : 'Save'));
+            button.append(icon, createEl('span', 'xai-card-action-label', action === 'copy' ? 'Copy' : 'Save'));
             button.addEventListener('click', event => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -1377,13 +1377,13 @@ class HovercardController {
             // Keep keyboard focus while busy. The handler guards repeat activation.
             button.setAttribute('aria-disabled', String(state.pending));
             button.setAttribute('aria-busy', String(state.pending));
-            button.classList.toggle('x-posed-export-button--success', success);
-            button.querySelector('.x-posed-card-action-icon').replaceChildren(
+            button.classList.toggle('xai-export-button--success', success);
+            button.querySelector('.xai-card-action-icon').replaceChildren(
                 dialogIcon(success ? 'check' : action === 'copy' ? 'copy' : 'download', 18));
         }
         state.status.textContent = state.message;
         state.status.hidden = !state.message;
-        state.status.classList.toggle('x-posed-export-status--error', state.error);
+        state.status.classList.toggle('xai-export-status--error', state.error);
         if (this._isCurrentImageState(state)) positionCard(this.card, this.currentAnchor);
     }
 
@@ -1423,7 +1423,7 @@ class HovercardController {
                     const url = URL.createObjectURL(blob);
                     const link = document.createElement('a');
                     link.href = url;
-                    link.download = `x-posed-${state.handle.replace(/[^a-z0-9_]/g, '') || 'account'}-card.png`;
+                    link.download = `xai-${state.handle.replace(/[^a-z0-9_]/g, '') || 'account'}-card.png`;
                     document.body.appendChild(link);
                     try { link.click(); }
                     finally {
@@ -1473,10 +1473,10 @@ class HovercardController {
 
     _createAllowlistState(handle, viewId) {
         if (!/^[a-z0-9_]{1,15}$/.test(handle)) return null;
-        const element = createEl('div', 'x-posed-allowlist-control');
-        const button = createEl('button', 'x-posed-allowlist-button');
+        const element = createEl('div', 'xai-allowlist-control');
+        const button = createEl('button', 'xai-allowlist-button');
         button.type = 'button';
-        const status = createEl('div', 'x-posed-allowlist-status');
+        const status = createEl('div', 'xai-allowlist-status');
         status.setAttribute('aria-live', 'polite');
         element.appendChild(button);
         const state = { handle, viewId, generation: this.generation, element, button, status,
@@ -1516,7 +1516,7 @@ class HovercardController {
         status.textContent = state.error || state.message || (pending && allowed === null ? 'Checking Always Show…' : '');
         status.hidden = !status.textContent;
         status.setAttribute('role', state.error ? 'alert' : 'status');
-        status.classList.toggle('x-posed-allowlist-error', !!state.error);
+        status.classList.toggle('xai-allowlist-error', !!state.error);
         if (this._isCurrentAllowlist(state)) this.syncFilters();
         if (this._isCurrentAllowlist(state)) positionCard(this.card, this.currentAnchor);
     }
@@ -1632,7 +1632,7 @@ class HovercardController {
                     avatar: resolveCardAvatar({ anchor: anchorEl, screenName, info: known.info, profile: getProfile(screenName) }),
                     errorText: known.complete ? '' : msg, onClose: this._handleClose, update: true
                 });
-                this.card.classList.add('x-posed-hovercard-visible');
+                this.card.classList.add('xai-hovercard-visible');
                 this.quickFilterState?.updateInfo(known.info);
                 positionCard(this.card, anchorEl);
             }
@@ -1658,14 +1658,14 @@ class HovercardController {
                 avatar: resolveCardAvatar({ anchor: anchorEl, screenName, info: fresh, profile: getProfile(screenName) }),
                 onClose: this._handleClose, update: true
             });
-            this.card.classList.add('x-posed-hovercard-visible');
+            this.card.classList.add('xai-hovercard-visible');
             this.quickFilterState?.updateInfo(fresh);
             positionCard(this.card, anchorEl);
         }
     }
 
     _handleScroll(event) {
-        if (event?.target?.closest?.('.x-posed-warning-help')) return;
+        if (event?.target?.closest?.('.xai-warning-help')) return;
         setLocationWarningHelp(this.card, false);
         // Coalesce bursts of capture-phase scroll/resize events into one rAF so
         // we don't call getBoundingClientRect()/reposition on every tick.

@@ -3,15 +3,15 @@ let tooltipSequence = 0;
 
 export function createCardTooltip(card) {
     const tooltip = document.createElement('div');
-    tooltip.className = 'x-posed-action-tooltip';
-    do { tooltip.id = `x-posed-action-tooltip-${++tooltipSequence}`; }
+    tooltip.className = 'xai-action-tooltip';
+    do { tooltip.id = `xai-action-tooltip-${++tooltipSequence}`; }
     while (document.getElementById(tooltip.id));
     tooltip.setAttribute('role', 'tooltip');
     tooltip.hidden = true;
     const heading = document.createElement('div');
-    heading.className = 'x-posed-action-tooltip-heading';
+    heading.className = 'xai-action-tooltip-heading';
     const description = document.createElement('div');
-    description.className = 'x-posed-action-tooltip-description';
+    description.className = 'xai-action-tooltip-description';
     tooltip.append(heading, description);
     card.appendChild(tooltip);
 

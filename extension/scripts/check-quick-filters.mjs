@@ -185,7 +185,7 @@ function quickEnvironment({ info = { location: 'Belgium', meta: { restId: ACCOUN
     };
     e.mount = (nextInfo = info, handle = 'demo_account') => context.createQuickFilterControl({ handle, info: nextInfo, getState: () => state, sendMessage, isCurrent: () => e.current, writes });
     e.control = e.mount();
-    e.button = (kind, control = e.control) => control.element.children.find(child => child.classList.contains('x-posed-footer-section-controls'))
+    e.button = (kind, control = e.control) => control.element.children.find(child => child.classList.contains('xai-footer-section-controls'))
         .children.find(button => button.dataset.action === kind);
     e.tick = () => new Promise(resolve => setImmediate(resolve));
     e.release = async () => { e.hold = false; assert.ok(pending.length); pending.shift()(); await e.tick(); };
@@ -403,7 +403,7 @@ await check('Production profile listener rederives account-only filters and sync
     });
     vm.runInContext(`${productionDeclarations('../src/content/content-script.js', ['setupProfileListener'])}\nglobalThis.setupProfileListener = setupProfileListener;`, context);
     context.setupProfileListener({ listen: (_target, type, handler) => listeners.set(type, handler), add() {} });
-    const relay = users => listeners.get('x-posed-profiles')({ detail: JSON.stringify({ users }) });
+    const relay = users => listeners.get('xai-profiles')({ detail: JSON.stringify({ users }) });
     relay([{ u: 'alice', i: ACCOUNT_ID }]);
     assert.deepEqual(passes, [['alice']]);
     assert.equal(controlSyncs, 1);
@@ -672,9 +672,9 @@ await check('Quick controls read current snapshots without requests and follow g
     assert.match(location.dataset.xTooltipHeading, /Hide Belgium/);
     assert.ok(location.dataset.xTooltipDescription.length > 20, 'Country scope is explained, not just its name');
     for (const button of [account, location]) {
-        assert.equal(button.classList.contains('x-posed-card-action'), true, 'Every footer cell shares the same base treatment');
+        assert.equal(button.classList.contains('xai-card-action'), true, 'Every footer cell shares the same base treatment');
         assert.equal(button.children[0].children[0].dataset.size, '18');
-        assert.equal(button.children[1].className, 'x-posed-card-action-label');
+        assert.equal(button.children[1].className, 'xai-card-action-label');
         assert.equal(button.getAttribute('title'), null, 'Native tooltips must not duplicate the styled explanation');
     }
     assert.deepEqual(e.calls, []);
@@ -692,15 +692,15 @@ await check('Quick controls read current snapshots without requests and follow g
     assert.match(account.dataset.xTooltipHeading, /Remove account filter/);
     assert.equal(account.getAttribute('title'), null);
     assert.equal(account.getAttribute('aria-pressed'), 'true');
-    assert.equal(account.children.find(child => child.classList.contains('x-posed-card-action-check')).hidden, false, 'Selected cells expose a small visual check');
+    assert.equal(account.children.find(child => child.classList.contains('xai-card-action-check')).hidden, false, 'Selected cells expose a small visual check');
 });
 
 await check('Grouped quick filters retain a labelled live mode heading and focused controls through pending saves/enrichment', async () => {
     const e = quickEnvironment(), section = e.control.element, heading = e.control.heading;
     const account = e.button('account'), location = e.button('location'); account.focus();
-    assert.equal(section.classList.contains('x-posed-footer-section'), true);
+    assert.equal(section.classList.contains('xai-footer-section'), true);
     assert.equal(section.getAttribute('role'), 'group'); assert.equal(section.getAttribute('aria-labelledby'), heading.id);
-    assert.ok(heading.id); assert.equal(heading.classList.contains('x-posed-footer-section-heading'), true);
+    assert.ok(heading.id); assert.equal(heading.classList.contains('xai-footer-section-heading'), true);
     assert.equal(heading.textContent, 'Hide');
     e.state.settings.highlightBlockedTweets = true; e.control.refresh();
     assert.equal(heading.textContent, 'Highlight'); assert.equal(e.control.heading, heading);
@@ -724,8 +724,8 @@ await check('A direct Pakistan filter is selected on the first array-backed Bloc
     const country = e.button('location'), account = e.button('account');
     assert.equal(country.getAttribute('aria-pressed'), 'true');
     assert.notEqual(country.dataset.coverage, 'region');
-    assert.equal(country.children.find(child => child.classList.contains('x-posed-card-action-check')).hidden, false);
-    assert.equal(country.children.find(child => child.classList.contains('x-posed-card-action-coverage')).hidden, true);
+    assert.equal(country.children.find(child => child.classList.contains('xai-card-action-check')).hidden, false);
+    assert.equal(country.children.find(child => child.classList.contains('xai-card-action-coverage')).hidden, true);
     assert.match(country.dataset.xTooltipHeading, /Remove country filter/);
     assert.equal(account.getAttribute('aria-pressed'), 'false'); assert.deepEqual(e.calls, []);
 });
@@ -735,11 +735,11 @@ await check('Pakistan included through active South Asia is distinguished from a
         settings: { regionCountrySelections: { 'south asia': ['pakistan'] } }, filterState: { blockedRegions: ['south asia'] } });
     const country = e.button('location'), account = e.button('account');
     assert.equal(country.dataset.coverage, 'region'); assert.equal(country.getAttribute('aria-pressed'), 'false');
-    const indirect = country.children.find(child => child.classList.contains('x-posed-card-action-coverage'));
+    const indirect = country.children.find(child => child.classList.contains('xai-card-action-coverage'));
     assert.equal(indirect.hidden, false); assert.equal(indirect.textContent, '', 'The decorative CSS minus does not pollute the visible caption');
     assert.equal(indirect.getAttribute('aria-hidden'), 'true');
     assert.equal(country.textContent, 'Country'); assert.equal(account.textContent, 'Account');
-    assert.equal(country.children.find(child => child.classList.contains('x-posed-card-action-check')).hidden, true);
+    assert.equal(country.children.find(child => child.classList.contains('xai-card-action-check')).hidden, true);
     assert.match(country.dataset.xTooltipHeading, /Included through South Asia/);
     assert.match(country.dataset.xTooltipDescription, /Pakistan.*South Asia/);
     assert.match(country.dataset.xTooltipDescription, /adds a separate country filter/);
