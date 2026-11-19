@@ -48,9 +48,21 @@ export const STORAGE_KEYS = {
 
 // Cloud Community Cache configuration
 // COST + SPEED OPTIMIZATION: Balance between costs and user experience
+//
+// Deliberately unconfigured in this project. The upstream project's cache
+// automatically uploads every freshly-resolved lookup (handle, country,
+// connection source, creation date, numeric ID, handle-change count) to a
+// third-party server by default for new installs — see cloud-cache.js's
+// isConfigured(), which every network call in this module is gated behind.
+// Leaving API_URL as a placeholder means isConfigured() is false everywhere,
+// so no call in this file can ever reach a server, regardless of the
+// enabled/disabled setting a user toggles. If this project ever wants a
+// shared cache, it should be its own infrastructure with its own, clearly
+// disclosed data-retention and opt-in terms — not pointed at the upstream
+// author's worker.
 export const CLOUD_CACHE_CONFIG = {
-    // Cloudflare Worker URL
-    API_URL: 'https://x-posed-cache.xaitax.workers.dev',
+    // Cloudflare Worker URL — intentionally unset, see note above.
+    API_URL: 'YOUR_SUBDOMAIN',
 
     // Batch settings - balanced for cost and speed
     BATCH_SIZE: 100,             // Max usernames per lookup request

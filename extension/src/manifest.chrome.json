@@ -18,8 +18,7 @@
 
   "host_permissions": [
     "*://*.x.com/*",
-    "*://*.twitter.com/*",
-    "https://x-posed-cache.xaitax.workers.dev/*"
+    "*://*.twitter.com/*"
   ],
 
   "background": {
