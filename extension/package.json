@@ -1,0 +1,71 @@
+{
+  "name": "x-posed-extension",
+  "version": "4.4.0",
+  "description": "See where X users are located and what devices they use. Country flags & device icons next to every username. Optional geo-blocking.",
+  "type": "module",
+  "scripts": {
+    "dev": "rollup -c -w",
+    "dev:chrome": "cross-env BROWSER=chrome rollup -c -w",
+    "dev:firefox": "cross-env BROWSER=firefox rollup -c -w",
+    "build": "npm run build:chrome && npm run build:firefox",
+    "build:chrome": "cross-env BROWSER=chrome rollup -c",
+    "build:firefox": "cross-env BROWSER=firefox rollup -c",
+    "build:prod": "cross-env NODE_ENV=production npm run build",
+    "clean": "rimraf dist",
+    "prebuild": "npm run clean",
+    "package:chrome": "rimraf dist/chrome && npm run build:chrome && node scripts/zip.js chrome",
+    "package:firefox": "rimraf dist/firefox && npm run build:firefox && node scripts/zip.js firefox",
+    "package": "npm run package:chrome && npm run package:firefox",
+    "check:parsers": "node scripts/check-parsers.mjs",
+    "check:chat": "node scripts/check-chat-data.mjs && node scripts/check-chat-network.mjs",
+    "check:profiles": "node scripts/check-profiles.mjs && node scripts/check-profile-client.mjs && node scripts/check-profile-lookups.mjs",
+    "check:regions": "node scripts/check-regions.mjs",
+    "check:lists": "node scripts/check-list-highlighting.mjs",
+    "check:quick-filters": "node scripts/check-quick-filters.mjs",
+    "check:post-card": "node scripts/check-post-card.mjs",
+    "check:hover-intent": "node scripts/check-hover-intent.mjs",
+    "check:hover-cache": "node scripts/check-hover-cache.mjs",
+    "check:hover-loading": "node scripts/check-hover-loading.mjs",
+    "check:hover-sync": "node scripts/check-hover-sync.mjs",
+    "check:hover-avatar": "node scripts/check-hover-avatar.mjs",
+    "check:profile-link": "node scripts/check-profile-link.mjs",
+    "check:hover": "npm run check:hover-intent && npm run check:hover-cache && npm run check:hover-loading && npm run check:hover-sync && npm run check:hover-avatar && npm run check:profile-link",
+    "check:build": "node scripts/check-build.mjs",
+    "lint": "eslint src/**/*.js && npm run check:parsers",
+    "lint:fix": "eslint src/**/*.js --fix"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-replace": "^5.0.5",
+    "@rollup/plugin-terser": "^0.4.4",
+    "archiver": "^6.0.1",
+    "cross-env": "^7.0.3",
+    "eslint": "^8.56.0",
+    "rimraf": "^5.0.5",
+    "rollup": "^4.9.6",
+    "rollup-plugin-copy": "^3.5.0"
+  },
+  "keywords": [
+    "x",
+    "twitter",
+    "extension",
+    "chrome",
+    "firefox",
+    "location",
+    "device"
+  ],
+  "author": "xaitax",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xaitax/x-account-location-device"
+  },
+  "bugs": {
+    "url": "https://github.com/xaitax/x-account-location-device/issues"
+  },
+  "homepage": "https://github.com/xaitax/x-account-location-device#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

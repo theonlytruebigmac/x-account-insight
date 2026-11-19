@@ -1,0 +1,959 @@
+/**
+ * Storage Abstraction Layer
+ * Uses chrome.storage/browser.storage API with LRU cache support
+ */
+
+import browserAPI from './browser-api.js';
+import { STORAGE_KEYS, CACHE_CONFIG, DEFAULT_SETTINGS, canonicalCountry, affiliationWasChecked, normalizeAccountId } from './constants.js';
+import { LRUCache } from './lru-cache.js';
+import { normalizeLinkRule } from './domain-utils.js';
+import { FILTER_SOURCES } from './filter-registry.js';
+import { ACCOUNT_COUNT_FILTERS, isAccountCountThreshold } from './account-counts.js';
+import { BADGE_SIZES, normalizeBadgeSize } from './badge-appearance.js';
+import { normalizeRegionCountrySelections, areRegionCountrySelectionsEqual } from './region-membership.js';
+
+// One ordering counter per configuration store. Persisted alongside its state in
+// the same local-storage write, so delayed replies remain orderable after a
+// service-worker restart. This metadata is never included in exported settings.
+function nextStateRevision(revision) {
+    if (revision >= Number.MAX_SAFE_INTEGER) throw new RangeError('Configuration revision limit reached');
+    return revision + 1;
+}
+
+/**
+ * User cache data storage with per-entry expiry tracking
+ */
+class UserCacheStorage {
+    constructor() {
+        // Each in-memory LRU value is an envelope `{ value, expiry }` so that the
+        // per-entry expiry is freed automatically when the LRU evicts an entry.
+        this.cache = new LRUCache(CACHE_CONFIG.MAX_ENTRIES);
+        this.dirty = false;
+        this.loaded = false;
+        this.saveTimeoutId = null;
+    }
+
+    /** X handles are case-insensitive, including legacy persisted cache keys. */
+    static key(screenName) {
+        return typeof screenName === 'string' ? screenName.trim().toLowerCase() : '';
+    }
+
+    /** A lean/page/cloud meta object is not a completed AboutAccount projection. */
+    static hasMetadataShape(data) {
+        const meta = data?.meta;
+        if (!meta || meta.partial || typeof meta !== 'object' || Array.isArray(meta)) return false;
+        const required = [
+            'name', 'avatarUrl', 'createdAt', 'restId', 'affiliateUsername', 'affiliate', 'usernameChanges',
+            'profileImageShape', 'blueVerified', 'verified', 'verifiedType', 'identityVerified',
+            'verifiedSinceMsec', 'protected', 'createdCountryAccurate', 'learnMoreUrl'
+        ];
+        return required.every(key => Object.hasOwn(meta, key) && meta[key] !== undefined) &&
+            ['blueVerified', 'verified', 'identityVerified', 'protected', 'createdCountryAccurate']
+                .every(key => typeof meta[key] === 'boolean');
+    }
+
+    /** Rich metadata has its own age; a newer partial signal cannot refresh it. */
+    static metadataTimestamp(data, now = Date.now()) {
+        return UserCacheStorage.observationTimestamp(
+            Object.hasOwn(data || {}, 'metaTimestamp') ? { timestamp: data.metaTimestamp } : data, now);
+    }
+
+    static hasCompleteMetadata(data, now = Date.now()) {
+        if (!UserCacheStorage.hasMetadataShape(data)) return false;
+        const observedAt = UserCacheStorage.metadataTimestamp(data, now);
+        if (observedAt === null) return false;
+        const deadline = Object.hasOwn(data, 'metaExpiresAt') ? data.metaExpiresAt : observedAt + CACHE_CONFIG.EXPIRY_MS;
+        return Number.isFinite(deadline) && Math.min(deadline, observedAt + CACHE_CONFIG.EXPIRY_MS) > now;
+    }
+
+    /** Attach RAM-only metadata provenance, clamped to its original source deadline. */
+    static withMetadataDeadline(entry, now = Date.now()) {
+        const { value, expiry } = entry;
+        if (!UserCacheStorage.hasMetadataShape(value)) {
+            if (!Object.hasOwn(value, 'metaTimestamp') && !Object.hasOwn(value, 'metaExpiresAt')) return entry;
+            const copy = { ...value };
+            delete copy.metaTimestamp;
+            delete copy.metaExpiresAt;
+            return { ...entry, value: copy };
+        }
+        const metaTimestamp = UserCacheStorage.metadataTimestamp(value, now);
+        const sourceDeadline = metaTimestamp === null ? null : metaTimestamp + CACHE_CONFIG.EXPIRY_MS;
+        const existingDeadline = Object.hasOwn(value, 'metaExpiresAt') ? value.metaExpiresAt : sourceDeadline;
+        const metaExpiresAt = Number.isFinite(existingDeadline) && sourceDeadline !== null
+            ? Math.min(expiry, existingDeadline, sourceDeadline) : null;
+        if (value.metaTimestamp === metaTimestamp && value.metaExpiresAt === metaExpiresAt) return entry;
+        return { ...entry, value: { ...value, metaTimestamp, metaExpiresAt } };
+    }
+
+    /** Null cloud defaults are unknown; differing observed shared values require enrichment. */
+    static sharedMetadataConflicts(fullMeta, partialMeta) {
+        const createdAt = Date.parse(partialMeta?.createdAt);
+        if (Number.isFinite(createdAt) && createdAt !== Date.parse(fullMeta?.createdAt)) return true;
+        if (typeof partialMeta?.usernameChanges === 'number' && partialMeta.usernameChanges !== fullMeta?.usernameChanges) return true;
+        const label = value => typeof value === 'string' ? value.trim().toLowerCase() : '';
+        const previousLabels = [label(fullMeta?.affiliate?.name), label(fullMeta?.affiliateUsername)];
+        return [label(partialMeta?.affiliate?.name), label(partialMeta?.affiliateUsername)]
+            .some(value => value && !previousLabels.includes(value));
+    }
+
+    /** Pick the authoritative observation without renewing either source's deadline. */
+    static selectEntry(previous, candidate, now = Date.now()) {
+        candidate = UserCacheStorage.withMetadataDeadline(candidate, now);
+        if (!previous || previous.expiry <= now) return candidate;
+        previous = UserCacheStorage.withMetadataDeadline(previous, now);
+        const previousTime = UserCacheStorage.observationTimestamp(previous.value, now);
+        const candidateTime = UserCacheStorage.observationTimestamp(candidate.value, now);
+        const previousFull = UserCacheStorage.hasCompleteMetadata(previous.value, now);
+        const candidateFull = UserCacheStorage.hasCompleteMetadata(candidate.value, now);
+        const candidateOlder = previousTime !== null && (candidateTime === null || candidateTime < previousTime);
+        const sameTime = previousTime === candidateTime;
+        // At the same source time, a complete live observation beats a cloud subset.
+        if (candidateOlder || (sameTime && previousFull && !candidateFull) ||
+            (sameTime && previous.value.fromCloud === false && candidate.value.fromCloud === true)) {
+            return previous;
+        }
+
+        // Keep full in-memory details across a newer compatible subset, but never
+        // carry them over changed location/device/accuracy or a recycled handle.
+        const sameSignals = previous.value.location === candidate.value.location &&
+            previous.value.device === candidate.value.device &&
+            (previous.value.locationAccurate === false) === (candidate.value.locationAccurate === false);
+        const previousId = previous.value.meta?.restId;
+        const candidateId = candidate.value.meta?.restId;
+        const sameAccount = typeof previousId === 'string' && /^[0-9]{1,20}$/.test(previousId) &&
+            typeof candidateId === 'string' && candidateId === previousId;
+        if (previousFull && !candidateFull && sameSignals && sameAccount &&
+            !UserCacheStorage.sharedMetadataConflicts(previous.value.meta, candidate.value.meta)) {
+            return {
+                ...candidate,
+                value: { ...candidate.value,
+                    // These transient fields are intentionally excluded by toPersistedValue.
+                    metaTimestamp: previous.value.metaTimestamp,
+                    metaExpiresAt: previous.value.metaExpiresAt,
+                    // Null/absent cloud defaults must not erase known full fields
+                    // or affiliation artwork. This remains the old full projection.
+                    meta: previous.value.meta }
+            };
+        }
+        return candidate;
+    }
+
+    async load() {
+        try {
+            const result = await browserAPI.storage.local.get(STORAGE_KEYS.CACHE);
+            const stored = result[STORAGE_KEYS.CACHE];
+
+            if (stored && typeof stored === 'object') {
+                const now = Date.now();
+                let loadedCount = 0;
+                let expiredCount = 0;
+
+                // Load non-expired entries with their original expiry times,
+                // keeping the persisted `{ value, expiry }` shape in memory.
+                for (const [key, data] of Object.entries(stored)) {
+                    const cacheKey = UserCacheStorage.key(key);
+                    if (!cacheKey || !data || !Number.isFinite(data.expiry) || !data.value) continue;
+
+                    const value = UserCacheStorage.fromPersistedValue(data.value);
+                    // Older saves dropped the source timestamp. Keep that age explicitly
+                    // unknown and retain the old deadline rather than inventing freshness.
+                    const timestamp = UserCacheStorage.observationTimestamp(value, now);
+                    const expiry = timestamp === null
+                        ? data.expiry
+                        : Math.min(data.expiry, timestamp + CACHE_CONFIG.EXPIRY_MS);
+                    if (expiry > now) {
+                        const entry = { value: { ...value, timestamp }, expiry };
+                        this.cache.set(cacheKey, UserCacheStorage.selectEntry(this.cache.get(cacheKey), entry, now));
+                        loadedCount++;
+                    } else {
+                        expiredCount++;
+                    }
+                }
+
+                console.log(`📦 Loaded ${loadedCount} cached user entries (${expiredCount} expired)`);
+            }
+
+            this.loaded = true;
+        } catch (error) {
+            console.error('Failed to load user cache:', error);
+            this.loaded = true; // Mark as loaded even on error to prevent blocking
+        }
+    }
+
+    /**
+     * Project a cache value down to what is worth writing to disk.
+     *
+     * The full X API record was being persisted verbatim at roughly 830 bytes an entry.
+     * With MAX_ENTRIES at 50k that is ~40 MB against chrome.storage.local's 10 MB quota
+     * (no `unlimitedStorage` permission), so past about 12.6k accounts every write threw
+     * and the cache silently stopped persisting while re-serialising tens of MB a minute.
+     *
+     * Keep location, device, accuracy, affiliation, and source freshness/provenance.
+     * The affiliation filter reads `meta.affiliate` / `meta.affiliateUsername`. The
+     * display name, avatar, verification state and the rest stay in memory for this
+     * session and are dropped on write — `partial` tells the hovercard to do a live fetch
+     * rather than render a card with half its fields blank.
+     * @param {any} value
+     * @returns {any}
+     */
+    static toPersistedValue(value) {
+        if (!value || typeof value !== 'object') return value;
+
+        const slim = {
+            location: value.location ?? null,
+            device: value.device ?? null,
+            locationAccurate: value.locationAccurate !== false,
+            timestamp: UserCacheStorage.observationTimestamp(value)
+        };
+        if (typeof value.fromCloud === 'boolean') slim.fromCloud = value.fromCloud;
+
+        // Affiliation is flattened to a single short key rather than a nested meta object,
+        // which is worth ~55 bytes on every one of up to 50k entries:
+        //   absent  → nobody has checked this account (filter treats it as unknown)
+        //   ''      → checked, has no affiliation
+        //   'Name'  → affiliated
+        if (affiliationWasChecked(value.meta)) {
+            slim.af = value.meta.affiliate?.name || '';
+        }
+
+        return slim;
+    }
+
+    /**
+     * Inverse of toPersistedValue: rebuild the in-memory shape from a stored entry.
+     * Entries written before this format simply pass through — they still carry their
+     * original `meta`, so nothing needs migrating.
+     * @param {any} value
+     * @returns {any}
+     */
+    static fromPersistedValue(value) {
+        if (!value || typeof value !== 'object' || value.af === undefined) return value;
+
+        const { af, ...rest } = value;
+        return {
+            ...rest,
+            meta: {
+                // Only the shared subset was persisted, so the hovercard must refetch
+                // rather than render a card missing the name, avatar and verification.
+                partial: true,
+                // Present-but-null is what marks this account as "affiliation checked".
+                affiliateUsername: null,
+                affiliate: af ? { name: af } : null
+            }
+        };
+    }
+
+    /**
+     * Drop the least-recently-used slice of the cache. Used to recover from a quota
+     * failure: the Map preserves recency order, so the head is the coldest.
+     * @param {number} fraction - portion of entries to shed, 0-1
+     * @returns {number} how many were evicted
+     */
+    evictOldest(fraction = 0.25) {
+        const target = Math.ceil(this.cache.size * fraction);
+        let evicted = 0;
+        for (const key of [...this.cache.keys()]) {
+            if (evicted >= target) break;
+            this.cache.delete(key);
+            evicted++;
+        }
+        return evicted;
+    }
+
+    /** Resolve whether this snapshot was persisted; background retries remain automatic. */
+    async save(force = false) {
+        this.pruneExpired();
+        // Dirty-gated: skip the whole rebuild+write when nothing changed.
+        if (!this.dirty && !force) return true;
+
+        // Clear any pending save
+        if (this.saveTimeoutId) {
+            clearTimeout(this.saveTimeoutId);
+            this.saveTimeoutId = null;
+        }
+
+        try {
+            const exportData = {};
+
+            // The in-memory value is already `{ value, expiry }`, matching the
+            // persisted format — no per-entry expiry lookup needed.
+            for (const [key, entry] of this.cache.entries()) {
+                exportData[key] = {
+                    value: UserCacheStorage.toPersistedValue(entry.value),
+                    expiry: entry.expiry
+                };
+            }
+
+            // Clear the dirty flag for THIS snapshot before the async write (the
+            // snapshot build above is synchronous, so nothing interleaves). A set()
+            // that lands during the await re-sets dirty=true and arms a fresh timer,
+            // and must not be clobbered by a post-await reset — so we do NOT touch
+            // dirty after the write succeeds.
+            this.dirty = false;
+
+            await browserAPI.storage.local.set({
+                [STORAGE_KEYS.CACHE]: exportData
+            });
+            return true;
+        } catch (error) {
+            this.dirty = true;
+
+            // A quota failure never fixes itself: retrying the same oversized snapshot
+            // every 60s just burns CPU while the cache silently stops persisting. Shed the
+            // coldest quarter and write again immediately; only fall back to the timer if
+            // that still fails or the error was something else (e.g. a transient write).
+            if (/quota/i.test(error?.message || '')) {
+                const evicted = this.evictOldest(0.25);
+                console.warn(`⚠️ User cache exceeded storage quota. Evicted ${evicted} least-recently-used entries and retrying.`);
+                if (evicted > 0) {
+                    return this.save(true);
+                }
+            }
+
+            // Re-arm a save so the snapshot is retried autonomously, not only on the
+            // next cache mutation.
+            this.scheduleSave();
+            console.error('Failed to save user cache:', error);
+            return false;
+        }
+    }
+
+    scheduleSave() {
+        if (this.saveTimeoutId) return;
+
+        this.saveTimeoutId = setTimeout(() => {
+            this.saveTimeoutId = null;
+            this.save();
+        }, CACHE_CONFIG.SAVE_INTERVAL_MS);
+    }
+
+    get(screenName) {
+        const key = UserCacheStorage.key(screenName);
+        const entry = key ? this.cache.get(key) : null;
+        if (!entry) return undefined;
+        if (entry.expiry <= Date.now()) {
+            this.delete(key);
+            return undefined;
+        }
+        return entry.value;
+    }
+
+    /** Source observation time in milliseconds; null means unknown or invalid. */
+    static observationTimestamp(data, now = Date.now()) {
+        const timestamp = data?.timestamp;
+        return Number.isFinite(timestamp) && timestamp > 0 && timestamp <= now
+            ? timestamp
+            : null;
+    }
+
+    static isFreshObservation(data, now = Date.now()) {
+        const timestamp = UserCacheStorage.observationTimestamp(data, now);
+        return timestamp !== null && timestamp + CACHE_CONFIG.EXPIRY_MS > now;
+    }
+
+    /**
+     * Store live data or a dated cached observation without renewing its source age.
+     * Undated live callers remain supported. Cached/imported data must carry a
+     * timestamp (null when unknown); an unknown legacy entry keeps its old expiry.
+     * @returns {boolean} whether the value was accepted
+     */
+    set(screenName, data) {
+        const key = UserCacheStorage.key(screenName);
+        if (!key || !data || typeof data !== 'object') return false;
+        const now = Date.now();
+        const isUndatedLive = !Object.hasOwn(data, 'timestamp') && data.fromCloud !== true;
+        const timestamp = isUndatedLive ? now : UserCacheStorage.observationTimestamp(data, now);
+        const previous = this.cache.get(key);
+        // Re-selecting the same accepted snapshot is not a new observation or
+        // persistence mutation. Undated live inputs still need their initial stamp.
+        if (Object.hasOwn(data, 'timestamp') && previous?.value === data && previous.expiry > now) return true;
+        let expiry;
+        if (timestamp === null) {
+            // Re-selecting the same legacy local record after a cloud lookup must not
+            // renew it. A newly received cloud/import record of unknown age is a miss.
+            if (!previous || previous.value !== data || previous.expiry <= now) return false;
+            expiry = previous.expiry;
+        } else {
+            expiry = timestamp + CACHE_CONFIG.EXPIRY_MS;
+            if (previous?.value === data) expiry = Math.min(expiry, previous.expiry);
+            if (expiry <= now) return false;
+        }
+        const entry = UserCacheStorage.selectEntry(previous, { value: { ...data, timestamp }, expiry }, now);
+        if (entry === previous) return false;
+        this.cache.set(key, entry);
+        this.dirty = true;
+        this.scheduleSave();
+        return true;
+    }
+
+    has(screenName) {
+        return this.get(screenName) !== undefined;
+    }
+
+    delete(screenName) {
+        const result = this.cache.delete(UserCacheStorage.key(screenName));
+        if (result) {
+            this.dirty = true;
+            this.scheduleSave();
+        }
+        return result;
+    }
+
+    async clear() {
+        this.cache.clear();
+        this.dirty = true;
+        await this.save(true);
+    }
+
+    get size() {
+        this.pruneExpired();
+        return this.cache.size;
+    }
+
+    pruneExpired() {
+        const now = Date.now();
+        for (const [key, entry] of this.cache.entries()) {
+            if (entry.expiry <= now) this.delete(key);
+        }
+    }
+
+    /**
+     * Iterate raw entries without allocating an object per entry.
+     * Callback receives (screenName, value) for each cached user.
+     * Prefer this over getAll() when computing aggregates.
+     * @param {(screenName: string, value: object) => void} callback
+     */
+    forEach(callback) {
+        this.pruneExpired();
+        for (const [key, entry] of this.cache.entries()) {
+            callback(key, entry.value);
+        }
+    }
+
+    getAll() {
+        this.pruneExpired();
+        return Array.from(this.cache.entries()).map(([key, entry]) => ({
+            screenName: key,
+            ...entry.value
+        }));
+    }
+}
+
+/**
+ * Generic Set-backed blocked-value storage.
+ *
+ * Consolidates the previously near-identical BlockedCountries/Regions/Tags
+ * classes. Parameterized by:
+ *   - storageKey: the chrome.storage key to persist under
+ *   - label:      human-readable label for log lines
+ *   - normalize:  function applied to incoming values before storing/looking up
+ *                 (countries/regions: trim + lowercase; tags: trim, case-kept)
+ *   - defaults:   optional array seeded on first run only (when the key has never
+ *                 been written). After that the user's edits — including clearing
+ *                 the list — always win, because the key then exists as an array.
+ *
+ * normalize returns a falsy value to reject the input (e.g. empty after trim).
+ */
+class BlockedSetStorage {
+    constructor({ storageKey, label, normalize, defaults = [] }) {
+        this.values = new Set();
+        this.loaded = false;
+        this.storageKey = storageKey;
+        this.revisionKey = `${storageKey}_revision`;
+        this.revision = 0;
+        this.label = label;
+        this.normalize = normalize;
+        this.defaults = Array.isArray(defaults) ? defaults : [];
+        this.mutationQueue = Promise.resolve();
+        this.loadPromise = null;
+    }
+
+    async load() {
+        if (this.loadPromise) return this.loadPromise;
+        if (this.loaded) return;
+        this.loadPromise = this.loadState();
+        try {
+            await this.loadPromise;
+        } finally {
+            this.loadPromise = null;
+        }
+    }
+
+    async loadState() {
+        try {
+            const result = await browserAPI.storage.local.get([this.storageKey, this.revisionKey]);
+            const stored = result[this.storageKey];
+            const revision = result[this.revisionKey];
+            this.revision = Number.isSafeInteger(revision) && revision >= 0 ? revision : 0;
+            // The read succeeded, so a first-run seed can enter the mutation queue.
+            this.loaded = true;
+
+            if (Array.isArray(stored)) {
+                // Aliases and normalizers can change between releases. Old saved
+                // values must obey the same rules as newly added values.
+                this.values = new Set(stored.map(value => this.normalize(value)).filter(Boolean));
+                console.log(`🚫 Loaded ${this.values.size} ${this.label}`);
+            } else if (this.defaults.length) {
+                // First run only: the key has never been written. Seed the defaults
+                // and persist once so the value is real and consistent everywhere —
+                // after this the user's edits (including clearing) stick.
+                await this.setAll(this.defaults);
+                console.log(`🌱 Seeded ${this.values.size} default ${this.label}`);
+            }
+
+            this.loaded = true;
+        } catch (error) {
+            console.error(`Failed to load ${this.label}:`, error);
+            this.loaded = false;
+            throw error;
+        }
+    }
+
+    async save(values = this.values, revision = this.revision) {
+        try {
+            const array = Array.from(values);
+            await browserAPI.storage.local.set({
+                [this.storageKey]: array,
+                [this.revisionKey]: revision
+            });
+            console.log(`💾 Saved ${array.length} ${this.label}`);
+        } catch (error) {
+            console.error(`Failed to save ${this.label}:`, error);
+            throw error;
+        }
+    }
+
+    /** Commit one mutation at a time; failed writes never change the visible Set. */
+    commitMutation(change) {
+        const operation = this.mutationQueue.then(async () => {
+            if (!this.loaded) throw new Error(`${this.label} must be loaded before editing`);
+            const next = new Set(this.values);
+            if (change(next) === false) return;
+            const revision = nextStateRevision(this.revision);
+            await this.save(next, revision);
+            this.values = next;
+            this.revision = revision;
+        });
+        // Keep later operations usable after a failure, while returning the real
+        // rejection to the caller so the message handler reports success:false.
+        this.mutationQueue = operation.catch(() => {});
+        return operation;
+    }
+
+    /**
+     * Replace the entire in-memory set from an array/iterable and persist once.
+     * Mutates the Set a single time and performs exactly one write.
+     * @param {Iterable<string>} valuesIterable
+     * @returns {Promise<void>}
+     */
+    setAll(valuesIterable) {
+        const next = new Set();
+        if (valuesIterable) {
+            for (const value of valuesIterable) {
+                const normalized = this.normalize(value);
+                if (normalized) {
+                    next.add(normalized);
+                }
+            }
+        }
+        return this.commitMutation(values => {
+            values.clear();
+            for (const value of next) values.add(value);
+        });
+    }
+
+    isBlocked(value) {
+        if (!value) return false;
+        const normalized = this.normalize(value);
+        if (!normalized) return false;
+        return this.values.has(normalized);
+    }
+
+    add(value) {
+        const normalized = this.normalize(value);
+        if (!normalized) return Promise.resolve();
+        return this.commitMutation(values => {
+            if (values.has(normalized)) return false;
+            values.add(normalized);
+        });
+    }
+
+    remove(value) {
+        const normalized = this.normalize(value);
+        if (!normalized) return Promise.resolve();
+        return this.commitMutation(values => values.delete(normalized));
+    }
+
+    toggle(value) {
+        const normalized = this.normalize(value);
+        if (!normalized) return Promise.resolve();
+        return this.commitMutation(values => {
+            if (values.has(normalized)) values.delete(normalized);
+            else values.add(normalized);
+        });
+    }
+
+    /**
+     * Check if any of the given values are blocked.
+     * @param {string[]} valuesToCheck - Array of values to check
+     * @returns {string|null} - The first blocked value found, or null
+     */
+    findBlocked(valuesToCheck) {
+        if (!valuesToCheck || !Array.isArray(valuesToCheck)) return null;
+        for (const value of valuesToCheck) {
+            if (this.isBlocked(value)) {
+                return this.normalize(value);
+            }
+        }
+        return null;
+    }
+
+    clear() {
+        return this.commitMutation(values => { values.clear(); });
+    }
+
+    get size() {
+        return this.values.size;
+    }
+
+    getAll() {
+        return Array.from(this.values);
+    }
+
+    /** Capture data and ordering metadata without an asynchronous gap. */
+    snapshot() {
+        return { data: this.getAll(), revision: this.revision };
+    }
+
+    has(value) {
+        return this.isBlocked(value);
+    }
+}
+
+// Normalizers: countries/regions are trimmed + lowercased; tags keep their case.
+const normalizeLower = value => {
+    if (!value || typeof value !== 'string') return '';
+    return value.trim().toLowerCase();
+};
+// Countries additionally fold aliases onto the canonical name, so a config imported
+// with "Macedonia" or "USA" still matches what X reports.
+const normalizeCountry = value => canonicalCountry(value);
+const normalizeTag = value => {
+    if (!value || typeof value !== 'string') return '';
+    return value.trim();
+};
+// Languages are stored as the lowercase primary BCP-47 subtag ("zh" from "zh-Hant"),
+// matching how observer.js reads X's per-tweet lang attribute.
+const normalizeLanguage = value => {
+    if (!value || typeof value !== 'string') return '';
+    return value.trim().toLowerCase().split('-')[0];
+};
+// Allowlisted accounts use the lowercase screen name (X handles are
+// case-insensitive). Accepts an optional leading "@" and enforces X's handle rule
+// (1-15 chars, alphanumeric + underscore); anything else is rejected.
+const normalizeUsername = value => {
+    if (!value || typeof value !== 'string') return '';
+    const handle = value.trim().replace(/^@+/, '').toLowerCase();
+    return /^[a-z0-9_]{1,15}$/.test(handle) ? handle : '';
+};
+
+/**
+ * Settings storage
+ */
+class SettingsStorage {
+    constructor() {
+        this.settings = { ...DEFAULT_SETTINGS };
+        this.loaded = false;
+        this.listeners = new Set();
+        this.mutationQueue = Promise.resolve();
+        this.revisionKey = `${STORAGE_KEYS.SETTINGS}_revision`;
+        this.revision = 0;
+        this.loadPromise = null;
+    }
+
+    async load() {
+        if (this.loadPromise) return this.loadPromise;
+        if (this.loaded) return;
+        this.loadPromise = this.loadState();
+        try {
+            await this.loadPromise;
+        } finally {
+            this.loadPromise = null;
+        }
+    }
+
+    async loadState() {
+        try {
+            const result = await browserAPI.storage.local.get([STORAGE_KEYS.SETTINGS, this.revisionKey]);
+            const stored = result[STORAGE_KEYS.SETTINGS];
+            const revision = result[this.revisionKey];
+            this.revision = Number.isSafeInteger(revision) && revision >= 0 ? revision : 0;
+            
+            if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
+                this.settings = { ...DEFAULT_SETTINGS, ...stored };
+            }
+            this.settings.badgeSize = normalizeBadgeSize(this.settings.badgeSize);
+            this.settings.regionCountrySelections = normalizeRegionCountrySelections(this.settings.regionCountrySelections);
+            if (typeof this.settings.showBadgeBackground !== 'boolean') {
+                this.settings.showBadgeBackground = DEFAULT_SETTINGS.showBadgeBackground;
+            }
+            this.settings.highlightInLists = this.settings.highlightInLists === true;
+            for (const { key, max } of ACCOUNT_COUNT_FILTERS) {
+                if (!isAccountCountThreshold(this.settings[key], max)) this.settings[key] = DEFAULT_SETTINGS[key];
+            }
+            
+            this.loaded = true;
+            console.log('⚙️ Settings loaded:', this.settings);
+        } catch (error) {
+            console.error('Failed to load settings:', error);
+            this.loaded = false;
+            throw error;
+        }
+    }
+
+    async save(values = this.settings, revision = this.revision, additionalEntries = {}) {
+        try {
+            if (!BADGE_SIZES.includes(values.badgeSize)) throw new TypeError('Invalid badge size.');
+            if (typeof values.showBadgeBackground !== 'boolean') throw new TypeError('Invalid badge background preference.');
+            if (typeof values.highlightInLists !== 'boolean') throw new TypeError('Invalid List highlighting preference.');
+            normalizeRegionCountrySelections(values.regionCountrySelections, { strict: true });
+            for (const { key, max } of ACCOUNT_COUNT_FILTERS) {
+                if (!isAccountCountThreshold(values[key], max)) throw new TypeError(`Invalid account-count threshold: ${key}.`);
+            }
+            await browserAPI.storage.local.set({
+                ...additionalEntries,
+                [STORAGE_KEYS.SETTINGS]: values,
+                [this.revisionKey]: revision
+            });
+        } catch (error) {
+            console.error('Failed to save settings:', error);
+            throw error;
+        }
+    }
+
+    /** Serialize partial updates and expose them only after persistence succeeds. */
+    commitMutation(change) {
+        const operation = this.mutationQueue.then(async () => {
+            if (!this.loaded) throw new Error('Settings must be loaded before editing');
+            const next = change({ ...this.settings });
+            if (!next) return this.get();
+            const revision = nextStateRevision(this.revision);
+            await this.save(next, revision);
+            this.settings = next;
+            this.revision = revision;
+            this.notifyListeners();
+            return this.get();
+        });
+        this.mutationQueue = operation.catch(() => {});
+        return operation;
+    }
+
+    get(key) {
+        if (key) {
+            return this.settings[key];
+        }
+        return { ...this.settings };
+    }
+
+    /** Revision is transport metadata, never part of the exported settings. */
+    snapshot() {
+        return { data: this.get(), revision: this.revision };
+    }
+
+    set(key, value) {
+        if (!key || (typeof key !== 'string' &&
+            (typeof key !== 'object' || Array.isArray(key)))) {
+            return Promise.reject(new TypeError('Settings must be a partial settings object or a setting name'));
+        }
+        const patch = typeof key === 'string' ? { [key]: value } : { ...key };
+        if (Object.hasOwn(patch, 'regionCountrySelections')) {
+            try {
+                patch.regionCountrySelections = normalizeRegionCountrySelections(patch.regionCountrySelections, { strict: true });
+            } catch (error) {
+                return Promise.reject(error);
+            }
+        }
+        return this.commitMutation(next => {
+            const changed = Object.keys(patch).some(name => name === 'regionCountrySelections'
+                ? !areRegionCountrySelectionsEqual(next[name], patch[name]) : !Object.is(next[name], patch[name]));
+            if (!changed) return false;
+            return { ...next, ...patch };
+        });
+    }
+
+    toggle(key) {
+        return this.commitMutation(next => {
+            if (typeof next[key] !== 'boolean') return false;
+            next[key] = !next[key];
+            return next;
+        });
+    }
+
+    /** Merge one region inside the queue so edits in different tabs cannot erase each other. */
+    setRegionCountries(regionKey, countries, { activate = false, regionStore } = {}) {
+        let region;
+        let selection;
+        try {
+            if (typeof activate !== 'boolean') throw new TypeError('Invalid region activation preference.');
+            if (activate && (!(regionStore instanceof BlockedSetStorage) ||
+                regionStore.storageKey !== STORAGE_KEYS.BLOCKED_REGIONS)) {
+                throw new TypeError('Region activation requires the region filter store.');
+            }
+            if (typeof regionKey !== 'string') throw new TypeError('A region name is required.');
+            region = canonicalCountry(regionKey);
+            selection = normalizeRegionCountrySelections({ [region]: countries === null ? [] : countries }, { strict: true });
+        } catch (error) {
+            return Promise.reject(error);
+        }
+        const change = next => {
+            const coverage = { ...next.regionCountrySelections };
+            if (countries === null) delete coverage[region];
+            else coverage[region] = selection[region];
+            if (areRegionCountrySelectionsEqual(next.regionCountrySelections, coverage)) return false;
+            next.regionCountrySelections = normalizeRegionCountrySelections(coverage, { strict: true });
+            return next;
+        };
+        if (!activate) return this.commitMutation(change);
+
+        // Reserve both queues before awaiting either. Other settings/list edits
+        // must follow this operation, so activation and precise country coverage
+        // are persisted together without a half-enabled region on write failure.
+        const operation = Promise.all([this.mutationQueue, regionStore.mutationQueue]).then(async () => {
+            if (!this.loaded || !regionStore.loaded) throw new Error('Settings and regions must be loaded before editing');
+            const changedSettings = change({ ...this.settings });
+            const changedRegion = !regionStore.values.has(region);
+            if (!changedSettings && !changedRegion) return this.get();
+            const next = changedSettings || this.settings;
+            const regions = new Set(regionStore.values);
+            regions.add(region);
+            const revision = changedSettings ? nextStateRevision(this.revision) : this.revision;
+            const regionsRevision = changedRegion ? nextStateRevision(regionStore.revision) : regionStore.revision;
+            await this.save(next, revision, {
+                [regionStore.storageKey]: [...regions],
+                [regionStore.revisionKey]: regionsRevision
+            });
+            this.settings = next;
+            this.revision = revision;
+            regionStore.values = regions;
+            regionStore.revision = regionsRevision;
+            if (changedSettings) this.notifyListeners();
+            return this.get();
+        });
+        const settled = operation.catch(() => {});
+        this.mutationQueue = settled;
+        regionStore.mutationQueue = settled;
+        return operation;
+    }
+
+    addListener(callback) {
+        this.listeners.add(callback);
+        return () => this.listeners.delete(callback);
+    }
+
+    notifyListeners() {
+        for (const listener of this.listeners) {
+            try {
+                listener(this.get());
+            } catch (error) {
+                console.error('Settings listener error:', error);
+            }
+        }
+    }
+
+    get isEnabled() {
+        return this.settings.enabled;
+    }
+}
+
+/**
+ * Captured headers storage (for API authentication)
+ */
+class HeadersStorage {
+    constructor() {
+        this.headers = null;
+    }
+
+    async load() {
+        try {
+            const result = await browserAPI.storage.local.get(STORAGE_KEYS.HEADERS);
+            this.headers = result[STORAGE_KEYS.HEADERS] || null;
+            
+            if (this.headers) {
+                console.log('🔑 Loaded cached API headers');
+            }
+        } catch (error) {
+            console.error('Failed to load headers:', error);
+        }
+    }
+
+    async save(headers) {
+        try {
+            this.headers = headers;
+            await browserAPI.storage.local.set({
+                [STORAGE_KEYS.HEADERS]: headers
+            });
+            console.log('🔑 Saved API headers');
+        } catch (error) {
+            console.error('Failed to save headers:', error);
+        }
+    }
+
+    get() {
+        return this.headers;
+    }
+
+    clear() {
+        this.headers = null;
+        return browserAPI.storage.local.remove(STORAGE_KEYS.HEADERS);
+    }
+
+    hasHeaders() {
+        return this.headers !== null && this.headers.authorization;
+    }
+}
+
+// Storage-specific policy stays here. The pure registry owns only stable identifiers.
+// Existing display-name casing, lowercase bio terms and first-run defaults are unchanged.
+const FILTER_STORAGE_OPTIONS = {
+    countries: { label: 'blocked countries', normalize: normalizeCountry },
+    regions: { label: 'blocked regions', normalize: normalizeLower },
+    tags: { label: 'blocked tags', normalize: normalizeTag },
+    bioTags: { label: 'blocked bio tags', normalize: normalizeLower },
+    pcf: { label: 'blocked account labels', normalize: normalizeLower },
+    languages: { label: 'blocked languages', normalize: normalizeLanguage },
+    affiliations: { label: 'blocked affiliations', normalize: normalizeLower },
+    links: { label: 'blocked linked domains and URLs', normalize: normalizeLinkRule },
+    // First run only. Removing the default keeps it removed (issue #26).
+    allowedUsers: { label: 'always-show accounts', normalize: normalizeUsername, defaults: ['xaitax'] },
+    accounts: { label: 'filtered accounts', normalize: normalizeAccountId }
+};
+
+export const filterStores = Object.freeze(Object.fromEntries(FILTER_SOURCES.map(source => [
+    source.field, new BlockedSetStorage({ storageKey: source.storageKey, ...FILTER_STORAGE_OPTIONS[source.kind] })
+])));
+
+// Preserve the public singleton exports used by existing consumers.
+export const {
+    blockedCountries, blockedRegions, blockedTags, blockedBioTags, blockedPcf,
+    blockedLanguages, blockedAffiliations, blockedLinks, allowedUsers, blockedAccounts
+} = filterStores;
+export const userCache = new UserCacheStorage();
+export const settings = new SettingsStorage();
+export const headersStorage = new HeadersStorage();
+
+// Export classes for testing
+export { LRUCache, UserCacheStorage, BlockedSetStorage, SettingsStorage, HeadersStorage };
+
+/**
+ * Initialize all storage modules
+ */
+export async function initializeStorage() {
+    await Promise.all([
+        userCache.load(),
+        ...FILTER_SOURCES.map(source => filterStores[source.field].load()),
+        settings.load(),
+        headersStorage.load()
+    ]);
+    
+    console.log('💾 All storage modules initialized');
+}

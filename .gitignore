@@ -1,0 +1,34 @@
+package-lock.json
+!/extension/package-lock.json
+
+# Local secrets / developer-specific configs
+cloud-server/.dev.vars
+dashboard/config.js
+cloud-server/README.md
+cloud-server/worker.js
+dashboard/app.js
+dashboard/config.example.js
+dashboard/index.html
+dashboard/README.md
+dashboard/styles.css
+cloud-server/worker.js
+cloud-server/README.md
+/cloud-server
+CLAUDE.md
+/cloud-server
+/docs
+/extension/design-preview
+
+# Local marketing source files and store-upload assets
+/brand/
+/website/
+/screenshots/raw-v3.4/
+/screenshots/marketing/source/
+/screenshots/marketing/campaign-background.png
+/screenshots/marketing/promo-small-440x280.png
+/screenshots/marketing/render.mjs
+/screenshots/marketing/README.md
+/screenshots/marketing/prototype-*
+
+# Local-only design exploration and temporary canvas files
+/.superdesign/
