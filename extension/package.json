@@ -34,7 +34,10 @@
     "check:hover": "npm run check:hover-intent && npm run check:hover-cache && npm run check:hover-loading && npm run check:hover-sync && npm run check:hover-avatar && npm run check:profile-link",
     "check:build": "node scripts/check-build.mjs",
     "lint": "eslint src/**/*.js && npm run check:parsers",
-    "lint:fix": "eslint src/**/*.js --fix"
+    "lint:fix": "eslint src/**/*.js --fix",
+    "test": "npm run check:request-policy && npm run check:chat && npm run check:profiles && npm run check:regions && npm run check:cloud && npm run check:lists && npm run check:quick-filters && npm run check:post-card && npm run check:hover",
+    "lint:firefox": "web-ext lint --source-dir=dist/firefox --self-hosted",
+    "sign:firefox": "web-ext sign --source-dir=dist/firefox --artifacts-dir=dist --channel=unlisted"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^25.0.7",
@@ -46,7 +49,8 @@
     "eslint": "^8.56.0",
     "rimraf": "^6.1.4",
     "rollup": "^4.9.6",
-    "rollup-plugin-copy": "^3.5.0"
+    "rollup-plugin-copy": "^3.5.0",
+    "web-ext": "^10.8.0"
   },
   "keywords": [
     "x",
@@ -61,12 +65,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "git+https://github.com/theonlytruebigmac/x-account-insight.git"
   },
   "bugs": {
-    "url": ""
+    "url": "https://github.com/theonlytruebigmac/x-account-insight/issues"
   },
-  "homepage": "",
+  "homepage": "https://github.com/theonlytruebigmac/x-account-insight#readme",
   "engines": {
     "node": ">=18.0.0"
   },

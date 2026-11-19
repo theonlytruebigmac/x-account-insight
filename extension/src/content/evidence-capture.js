@@ -61,7 +61,7 @@ export async function captureEvidence(tweetElement, userInfo, screenName, source
         });
     } catch (error) {
         if (activeCapture !== job || signal.aborted) return;
-        console.error('X-Posed: Evidence capture failed:', error);
+        console.error('X Account Insight: Evidence capture failed:', error);
         showErrorNotification(error.message || 'Failed to capture this post. Try again.');
     } finally {
         dismissToast(job.toast, { immediate: true });
@@ -119,8 +119,8 @@ function buildIntentUrl(mode, caption, tweetUrl, statusId, screenName) {
 function defaultCaption(location) {
     const where = location && location !== 'Unknown' ? location : null;
     return where
-        ? `X lists this account’s location as ${where}. (via X-Posed)`
-        : 'Account information reported by X. (via X-Posed)';
+        ? `X lists this account’s location as ${where}. (via X Account Insight)`
+        : 'Account information reported by X. (via X Account Insight)';
 }
 
 /**

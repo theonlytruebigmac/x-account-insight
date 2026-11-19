@@ -1,5 +1,5 @@
 /**
- * X-Posed Extension Constants
+ * X Account Insight Extension Constants
  * Centralized configuration for cross-browser compatibility
  *
  * CHANGELOG v2.5.0:

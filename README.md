@@ -50,8 +50,8 @@ Full details, including data retention and permissions, are in [PRIVACY.md](PRIV
 
 This project isn't published to any browser store. The easiest way to get a working copy without a Node toolchain is the **[Releases page](https://github.com/theonlytruebigmac/x-account-insight/releases)** — every tagged release has pre-built `x-account-insight-chrome-vX.Y.Z.zip` and `x-account-insight-firefox-vX.Y.Z.zip` assets, built automatically by CI:
 
-- **Chrome/Chromium**: download and unzip the `-chrome-` asset, then `chrome://extensions` → enable Developer mode → **Load unpacked** → select the unzipped folder.
-- **Firefox**: download the `-firefox-` asset, then `about:debugging` → **This Firefox** → **Load Temporary Add-on** → select the zip directly (no unzipping needed). This is a temporary install and is cleared when Firefox restarts.
+- **Chrome/Chromium**: download and unzip the `-chrome-` asset, then `chrome://extensions` → enable Developer mode → **Load unpacked** → select the unzipped folder. Chrome has no self-hosted auto-update mechanism for sideloaded extensions, so check the Releases page (or the in-extension "Check for updates" notice) for new versions yourself.
+- **Firefox**: if a signed `-firefox-vX.Y.Z.xpi` asset is attached to the release, just open/drag it into Firefox to install it permanently — and because the manifest points at a self-hosted update manifest, Firefox will **auto-update it** on future releases, same as a store install. If only the `.zip` is present (no `.xpi`), the maintainer hasn't configured AMO signing yet: use `about:debugging` → **This Firefox** → **Load Temporary Add-on** → select the zip directly. That's a temporary install cleared on restart, with no auto-update.
 
 To build from source instead (needed for `dev:*` watch mode or if you want to modify the code):
 
@@ -72,6 +72,17 @@ Then load the unpacked build:
 `npm run dev:chrome` / `npm run dev:firefox` watch and rebuild automatically; `npm run package` produces both store-format ZIPs under `extension/dist/`. Reload the extension and refresh any open X tabs after rebuilding.
 
 Source lives under `extension/src/` (content scripts, background service, shared modules, settings/popup UI, styles). `userscript/` is an older, non-feature-equivalent variant kept for reference.
+
+<details>
+<summary><strong>Maintainers: enabling signed, auto-updating Firefox releases</strong></summary>
+
+<br>
+
+By default the release workflow only produces unsigned `.zip` files for both browsers — Chrome has no cheaper alternative, but Firefox can do better for free. Create a (free) Firefox Add-on Developer account, generate API credentials under **[Manage API Keys](https://addons.mozilla.org/developers/addon/api/key/)**, and add them as repository secrets named `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` (Settings → Secrets and variables → Actions).
+
+Once both secrets exist, every tagged release will additionally: sign the Firefox build via `web-ext sign --channel=unlisted` (no public AMO listing — just a signature Firefox trusts), attach the signed `.xpi` to the GitHub Release, and commit an updated `updates.json` to `main` that `manifest.firefox.json`'s `update_url` points at. From then on, anyone who installed that `.xpi` gets real, silent auto-updates — no in-extension banner needed for Firefox. Until those secrets are set, this step is a complete no-op and the release pipeline behaves exactly as before.
+
+</details>
 
 ## Contributing
 

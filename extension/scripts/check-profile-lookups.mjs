@@ -31,12 +31,22 @@ function harness() {
             const list = listeners.get(type) || [];
             list.push(listener); listeners.set(type, list);
         },
+        removeEventListener(type, listener) {
+            const list = listeners.get(type);
+            if (list) listeners.set(type, list.filter(existing => existing !== listener));
+        },
         dispatchEvent(event) { for (const listener of listeners.get(event.type) || []) listener(event); },
         fetch(input, init) { return new Promise(resolve => requests.push({ input, init, resolve })); }
     };
     const document = { cookie: 'twid=u%3D111', querySelector: () => null };
     const event = (type, detail) => window.dispatchEvent(new CustomEvent(type, { detail: JSON.stringify(detail) }));
     window.addEventListener('x-posed-fetch-user-info-result', event => results.push(JSON.parse(event.detail)));
+    // Stand in for content-script.js's x-posed-acquire-rate-slot bridge (not under test
+    // here): grant every slot immediately so page-script's real rate-limit gate can pass.
+    window.addEventListener('x-posed-acquire-rate-slot', requestEvent => {
+        const { id } = JSON.parse(requestEvent.detail || '{}');
+        event('x-posed-rate-limit-slot-result', { id, success: true, waitMs: 0 });
+    });
     vm.runInNewContext(source, { window, document, location: new URL('https://x.com/home'),
         CustomEvent, XMLHttpRequest, Response, Headers, URL, console, performance, setTimeout, clearTimeout,
         AbortController, fetch: window.fetch });

@@ -278,7 +278,7 @@ export async function createPostCardCanvas(data, signal) {
     const captureWidth = ctx.measureText(captureLabel).width;
     const version = data.version ? `v${data.version}` : '';
     ctx.font = `600 13px ${FONT}`;
-    const brandWidth = 30 + ctx.measureText('X-Posed').width;
+    const brandWidth = 30 + ctx.measureText('X Account Insight').width;
     ctx.font = tinyFont;
     const signatureWidth = brandWidth + (version ? 8 + ctx.measureText(version).width : 0);
     const stackedFooter = signatureWidth + 24 + captureWidth > CONTENT_WIDTH;
@@ -372,7 +372,7 @@ export async function createPostCardCanvas(data, signal) {
 
     drawLines(ctx, urlLines, PADDING, urlTop, smallFont, colors.dim, 19);
     if (logo) ctx.drawImage(logo, PADDING, footerTop, 24, 24);
-    drawLines(ctx, ['X-Posed'], PADDING + 30, footerTop + 3, `600 13px ${FONT}`, colors.accent, 18);
+    drawLines(ctx, ['X Account Insight'], PADDING + 30, footerTop + 3, `600 13px ${FONT}`, colors.accent, 18);
     if (version) drawLines(ctx, [version], PADDING + brandWidth + 8, footerTop + 4, tinyFont, colors.dim, 18);
     drawLines(ctx, [captureLabel], stackedFooter ? PADDING : WIDTH - PADDING - captureWidth,
         footerTop + (stackedFooter ? 31 : 4), tinyFont, colors.dim, 18);

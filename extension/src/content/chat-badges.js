@@ -272,7 +272,7 @@ export function createChatBadges({ getSettings, getViewer = readFollowingViewer,
                         scope.cleanupStyles = cleanup;
                         scope.ready = true;
                         schedule();
-                    }).catch(error => console.warn('X-Posed: Could not prepare Chat styles:', error?.message));
+                    }).catch(error => console.warn('X Account Insight: Could not prepare Chat styles:', error?.message));
                 }
                 continue;
             }

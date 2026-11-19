@@ -46,7 +46,7 @@ async function initialize() {
     // Startup messages and a keyboard command can arrive together. Loading twice
     // could replace a freshly committed setting with an earlier storage snapshot.
     initializationPromise = (async () => {
-        console.log(`🚀 X-Posed v${VERSION} Background Worker starting...`);
+        console.log(`🚀 X Account Insight v${VERSION} Background Worker starting...`);
         try {
             await initializeStorage();
             await profileStore.load();

@@ -419,14 +419,14 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
             detail: JSON.stringify({ headers: headerObj })
         }));
 
-        debugLog('✅ X-Posed: API headers captured');
+        debugLog('✅ X Account Insight: API headers captured');
     }
 
     window.addEventListener(EVENT_RESET_HEADERS, () => {
         lookupGeneration++;
         headersCaptured = false;
         capturedHeaders = null;
-        debugLog('🔄 X-Posed: Headers reset - waiting for next API request');
+        debugLog('🔄 X Account Insight: Headers reset - waiting for next API request');
     });
 
     window.addEventListener(EVENT_FETCH_USER_INFO, async event => {
@@ -529,7 +529,7 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
         // In production, we don't want to spam the console
         // But during development, this helps debugging
         if (window.XPosedDebug) {
-            console.debug('X-Posed page script error:', context, error?.message || error);
+            console.debug('X Account Insight page script error:', context, error?.message || error);
         }
     }
 
@@ -885,13 +885,13 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
         // Enable debug mode for error logging
         enableDebug: () => {
             window.XPosedDebug = true;
-            console.log('🔍 X-Posed: Debug mode enabled');
+            console.log('🔍 X Account Insight: Debug mode enabled');
         },
         
         // Disable debug mode
         disableDebug: () => {
             window.XPosedDebug = false;
-            console.log('🔍 X-Posed: Debug mode disabled');
+            console.log('🔍 X Account Insight: Debug mode disabled');
         },
         
         // Why is nothing showing up? Reports every link in the harvest chain at once.
@@ -904,7 +904,7 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
 
         // Debug info
         debug: () => {
-            console.log('X-Posed Debug Info:', {
+            console.log('X Account Insight Debug Info:', {
                 version: '__BUILD_VERSION__',
                 headersCaptured,
                 injected: true,
@@ -918,5 +918,5 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
     // load and the first setting would be lost.
     window.dispatchEvent(new CustomEvent('x-posed-page-ready'));
 
-    debugLog('🚀 X-Posed: Page script loaded');
+    debugLog('🚀 X Account Insight: Page script loaded');
 })();

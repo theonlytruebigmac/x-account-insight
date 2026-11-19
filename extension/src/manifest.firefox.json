@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "X Account Insight: Account Location & Device Info",
+  "name": "X Account Insight",
   "version": "4.4.0",
   "description": "See where X users are located and what devices they use. Country flags & device icons next to every username. Optional geo-blocking.",
   
@@ -16,6 +16,7 @@
     "gecko": {
       "id": "x-account-insight@local",
       "strict_min_version": "140.0",
+      "update_url": "https://raw.githubusercontent.com/theonlytruebigmac/x-account-insight/main/updates.json",
       "data_collection_permissions": {
         "required": ["websiteActivity"]
       }

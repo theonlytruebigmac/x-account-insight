@@ -102,7 +102,7 @@ let memoizedScanPageFn = null;
  */
 function debug(...args) {
     if (debugMode) {
-        console.log('🔍 X-Posed:', ...args);
+        console.log('🔍 X Account Insight:', ...args);
     }
 }
 
@@ -253,7 +253,7 @@ function setupPageScriptListener(current) {
     current.listen(window, 'x-posed-request-rate-limit-state', () => {
         void sendMessage({ type: MESSAGE_TYPES.GET_RATE_LIMIT_STATUS })
             .then(publishRateLimitState)
-            .catch(error => console.warn('X-Posed: Could not load X rate-limit state:', error.message));
+            .catch(error => console.warn('X Account Insight: Could not load X rate-limit state:', error.message));
     });
 
     current.listen(window, 'x-posed-rate-limit-state', event => {
@@ -264,7 +264,7 @@ function setupPageScriptListener(current) {
             return;
         }
         void sendMessage({ type: MESSAGE_TYPES.UPDATE_RATE_LIMIT_STATE, payload: state })
-            .catch(error => console.warn('X-Posed: Could not share X rate-limit state:', error.message));
+            .catch(error => console.warn('X Account Insight: Could not share X rate-limit state:', error.message));
     });
 
     current.listen(window, 'x-posed-acquire-rate-slot', async event => {
@@ -653,7 +653,7 @@ function setupBackgroundListener(current) {
                 sendResponse(result);
             })
             .catch(error => {
-                console.error('X-Posed: Message handler error:', error);
+                console.error('X Account Insight: Message handler error:', error);
                 sendResponse({ success: false, error: error.message });
             });
 
@@ -877,7 +877,7 @@ async function initialize() {
     nextProfileRetry = 0;
     settingsLoaded = false;
     isEnabled = false;
-    console.log(`🚀 X-Posed v${VERSION} initializing...`);
+    console.log(`🚀 X Account Insight v${VERSION} initializing...`);
     filterStatisticsReporter = createFilterStatisticsReporter({
         sendMessage: message => browserAPI.runtime.sendMessage(message),
         isEnabled: () => !current.disposed && isEnabled,
@@ -921,7 +921,7 @@ async function initialize() {
         const accountId = currentAccountId();
         await client.initialize({ accountId, ...(accountId ? {} : { profileId: DEFAULT_PROFILE_ID }) });
         if (current.disposed) return;
-        console.log(`✅ X-Posed initialized (enabled: ${isEnabled}, debug: ${debugMode})`);
+        console.log(`✅ X Account Insight initialized (enabled: ${isEnabled}, debug: ${debugMode})`);
         maybeShowPasteHint(current);
         // Ready can precede storage loading or follow it. Sending on both events
         // makes the persisted preference authoritative in either ordering.
@@ -1010,13 +1010,13 @@ async function initialize() {
                 detectAndApplyTheme(debug);
                 startThemeObserver();
             } catch (error) {
-                console.error('X-Posed theme failed:', error);
+                console.error('X Account Insight theme failed:', error);
             }
 
             try {
                 injectSidebarLink(settings, debug, filterSets.blockedCountries, filterSets.blockedRegions, sendMessage, MESSAGE_TYPES, getBlockingState);
             } catch (error) {
-                console.error('X-Posed sidebar failed:', error);
+                console.error('X Account Insight sidebar failed:', error);
             }
         };
 
@@ -1028,7 +1028,7 @@ async function initialize() {
     } catch (error) {
         if (current.disposed) return;
         cleanup();
-        console.error('X-Posed initialization failed:', error);
+        console.error('X Account Insight initialization failed:', error);
     }
 }
 
