@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "X-Posed: Account Location & Device Info",
+  "name": "X Account Insight: Account Location & Device Info",
   "version": "4.4.0",
   "description": "See where X users are located and what devices they use. Country flags & device icons next to every username. Optional geo-blocking.",
   
@@ -76,7 +76,7 @@
       "64": "icons/icon64.png",
       "128": "icons/icon128.png"
     },
-    "default_title": "X-Posed"
+    "default_title": "X Account Insight"
   },
 
   "commands": {
