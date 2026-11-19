@@ -26,28 +26,28 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
     window.__X_POSED_INJECTED__ = true;
 
     // Gate informational logging. Off by default so we don't spam the page
-    // console in production; flip via window.XPosed.enableDebug() (sets
-    // window.XPosedDebug) or by setting DEBUG = true here during development.
+    // console in production; flip via window.XAI.enableDebug() (sets
+    // window.XAIDebug) or by setting DEBUG = true here during development.
     const DEBUG = false;
     function debugLog(...args) {
-        if (DEBUG || window.XPosedDebug) {
+        if (DEBUG || window.XAIDebug) {
             console.log(...args);
         }
     }
 
-    const EVENT_HEADERS_CAPTURED = 'x-posed-headers-captured';
-    const EVENT_RESET_HEADERS = 'x-posed-reset-headers';
-    const EVENT_FETCH_USER_INFO = 'x-posed-fetch-user-info';
-    const EVENT_FETCH_USER_INFO_RESULT = 'x-posed-fetch-user-info-result';
-    const EVENT_PROFILES_HARVESTED = 'x-posed-profiles';
-    const EVENT_SET_ENRICHMENT = 'x-posed-set-enrichment';
-    const EVENT_SET_FOLLOWING = 'x-posed-set-following';
-    const EVENT_FOLLOWING_HARVESTED = 'x-posed-following';
-    const EVENT_SET_POST_RELATIONS = 'x-posed-set-post-relations';
-    const EVENT_POST_RELATIONS_HARVESTED = 'x-posed-post-relations';
-    const EVENT_SET_CHAT = 'x-posed-set-chat';
-    const EVENT_CHAT_USERS = 'x-posed-chat-users';
-    const EVENT_SHADOW_ROOT_READY = 'x-posed-shadow-root-ready';
+    const EVENT_HEADERS_CAPTURED = 'xai-headers-captured';
+    const EVENT_RESET_HEADERS = 'xai-reset-headers';
+    const EVENT_FETCH_USER_INFO = 'xai-fetch-user-info';
+    const EVENT_FETCH_USER_INFO_RESULT = 'xai-fetch-user-info-result';
+    const EVENT_PROFILES_HARVESTED = 'xai-profiles';
+    const EVENT_SET_ENRICHMENT = 'xai-set-enrichment';
+    const EVENT_SET_FOLLOWING = 'xai-set-following';
+    const EVENT_FOLLOWING_HARVESTED = 'xai-following';
+    const EVENT_SET_POST_RELATIONS = 'xai-set-post-relations';
+    const EVENT_POST_RELATIONS_HARVESTED = 'xai-post-relations';
+    const EVENT_SET_CHAT = 'xai-set-chat';
+    const EVENT_CHAT_USERS = 'xai-chat-users';
+    const EVENT_SHADOW_ROOT_READY = 'xai-shadow-root-ready';
     const API_PATTERN = /x\.com\/i\/api\/graphql/;
     const ABOUT_QUERY_ID = 'XRqGa7EeokUU5kppkh13EA';
     const lookupQueue = new PacedLookupQueue({
@@ -83,12 +83,12 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
                 reject(Object.assign(new Error('Account lookup timed out'), { code: 'TIMEOUT' }));
             };
             const cleanup = () => {
-                window.removeEventListener('x-posed-rate-limit-slot-result', onResult);
+                window.removeEventListener('xai-rate-limit-slot-result', onResult);
                 signal.removeEventListener('abort', onAbort);
             };
-            window.addEventListener('x-posed-rate-limit-slot-result', onResult);
+            window.addEventListener('xai-rate-limit-slot-result', onResult);
             signal.addEventListener('abort', onAbort, { once: true });
-            window.dispatchEvent(new CustomEvent('x-posed-acquire-rate-slot', {
+            window.dispatchEvent(new CustomEvent('xai-acquire-rate-slot', {
                 detail: JSON.stringify({ id, priority })
             }));
         });
@@ -111,14 +111,14 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
         });
     }
 
-    window.addEventListener('x-posed-rate-limit-state-updated', event => {
+    window.addEventListener('xai-rate-limit-state-updated', event => {
         let state;
         try { state = JSON.parse(event.detail || '{}'); } catch { return; }
         if (Number.isFinite(state.resetTime) && state.resetTime > Date.now()) {
             lookupQueue.setRateLimit(state.resetTime);
         }
     });
-    window.dispatchEvent(new CustomEvent('x-posed-request-rate-limit-state'));
+    window.dispatchEvent(new CustomEvent('xai-request-rate-limit-state'));
 
     // Never collect profile text before the content script has loaded the user's
     // preference. Its ready/settings handshake enables passive harvesting explicitly.
@@ -244,7 +244,7 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
         // before the content controller's next check. Its reply uses a new generation.
         followingContext = null;
         followingMutations.clear();
-        window.dispatchEvent(new CustomEvent('x-posed-following-reset'));
+        window.dispatchEvent(new CustomEvent('xai-following-reset'));
         return false;
     }
 
@@ -352,7 +352,7 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
         relayFollowing([{ u: name, following }], snapshot, true);
     }
 
-    // Counters for window.XPosed.enrichmentStatus(), so a "nothing shows up" report can be
+    // Counters for window.XAI.enrichmentStatus(), so a "nothing shows up" report can be
     // diagnosed without guessing which link in the chain broke.
     const harvestStats = {
         // Which transport X actually uses for GraphQL. If both of these stay 0 while the
@@ -430,7 +430,7 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
     });
 
     window.addEventListener(EVENT_FETCH_USER_INFO, async event => {
-        let request = {};
+        let request;
         try {
             request = JSON.parse(event.detail || '{}');
         } catch {
@@ -475,7 +475,7 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
                     const resetTime = response.status === 429 ? readRateLimitReset(response.headers) : null;
                     if (rateLimitBudget || Number.isFinite(resetTime)) {
                         if (response.status === 429) lookupQueue.setRateLimit(resetTime);
-                        window.dispatchEvent(new CustomEvent('x-posed-rate-limit-state', {
+                        window.dispatchEvent(new CustomEvent('xai-rate-limit-state', {
                             detail: JSON.stringify({ resetTime, budget: rateLimitBudget })
                         }));
                     }
@@ -528,7 +528,7 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
     function logError(context, error) {
         // In production, we don't want to spam the console
         // But during development, this helps debugging
-        if (window.XPosedDebug) {
+        if (window.XAIDebug) {
             console.debug('X Account Insight page script error:', context, error?.message || error);
         }
     }
@@ -787,9 +787,9 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
 
     XMLHttpRequest.prototype.open = function(method, url) {
         try {
-            this._xPosedUrl = url;
-            this._xPosedMethod = method;
-            this._xPosedHeaders = {};
+            this._xAIUrl = url;
+            this._xAIMethod = method;
+            this._xAIHeaders = {};
             xhrRequests.delete(this);
         } catch (e) {
             logError('XHR open', e);
@@ -799,8 +799,8 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
 
     XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
         try {
-            if (this._xPosedHeaders) {
-                this._xPosedHeaders[name] = value;
+            if (this._xAIHeaders) {
+                this._xAIHeaders[name] = value;
             }
         } catch (e) {
             logError('XHR setRequestHeader', e);
@@ -810,16 +810,16 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
 
     XMLHttpRequest.prototype.send = function() {
         try {
-            const requestUrl = this._xPosedUrl;
+            const requestUrl = this._xAIUrl;
             const isGraphql = requestUrl && API_PATTERN.test(requestUrl);
-            const followingSnapshot = snapshotFollowingRequest(requestUrl, this._xPosedMethod);
-            const postRelationsSnapshot = snapshotPostRelationsRequest(requestUrl, this._xPosedMethod);
-            const chatSnapshot = snapshotChatRequest(requestUrl, this._xPosedMethod || 'GET');
+            const followingSnapshot = snapshotFollowingRequest(requestUrl, this._xAIMethod);
+            const postRelationsSnapshot = snapshotPostRelationsRequest(requestUrl, this._xAIMethod);
+            const chatSnapshot = snapshotChatRequest(requestUrl, this._xAIMethod || 'GET');
             if (isGraphql) {
                 harvestStats.graphqlXhrs++;
-                if (this._xPosedHeaders) sendHeaders(this._xPosedHeaders);
-            } else if (chatSnapshot && this._xPosedHeaders) {
-                sendHeaders(this._xPosedHeaders);
+                if (this._xAIHeaders) sendHeaders(this._xAIHeaders);
+            } else if (chatSnapshot && this._xAIHeaders) {
+                sendHeaders(this._xAIHeaders);
             }
 
             // One listener per request, also removed on errors/aborts. Reused XHRs
@@ -868,7 +868,7 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
      * NOTE: Version strings are replaced at build time by rollup.config.js
      * to ensure consistency with constants.js
      */
-    window.XPosed = {
+    window.XAI = {
         // This placeholder is replaced at build time via @rollup/plugin-replace
         // (rollup.config.js maps __BUILD_VERSION__ -> package.json version),
         // matching how constants.js sources VERSION.
@@ -884,13 +884,13 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
         
         // Enable debug mode for error logging
         enableDebug: () => {
-            window.XPosedDebug = true;
+            window.XAIDebug = true;
             console.log('🔍 X Account Insight: Debug mode enabled');
         },
         
         // Disable debug mode
         disableDebug: () => {
-            window.XPosedDebug = false;
+            window.XAIDebug = false;
             console.log('🔍 X Account Insight: Debug mode disabled');
         },
         
@@ -908,7 +908,7 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
                 version: '__BUILD_VERSION__',
                 headersCaptured,
                 injected: true,
-                debugMode: !!window.XPosedDebug
+                debugMode: !!window.XAIDebug
             });
         }
     };
@@ -916,7 +916,7 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
     // Tell the content script we're listening. The enrichment setting is pushed in
     // response — dispatching it blindly at injection time would race this script's own
     // load and the first setting would be lost.
-    window.dispatchEvent(new CustomEvent('x-posed-page-ready'));
+    window.dispatchEvent(new CustomEvent('xai-page-ready'));
 
     debugLog('🚀 X Account Insight: Page script loaded');
 })();

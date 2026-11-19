@@ -30,6 +30,8 @@ jobs:
       - run: npm run build
       - run: npm run check:build
       - run: npm run lint:firefox
+      - run: npx playwright install --with-deps chromium
+      - run: npm run check:e2e
       - run: npm run package
 
       # Firefox self-distribution: signs the build with Mozilla so Firefox can
