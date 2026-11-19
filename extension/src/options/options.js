@@ -43,6 +43,7 @@ const elements = Object.fromEntries(Object.entries({
     badgePreviewBadge: 'badge-preview-badge',
     badgePreviewDescription: 'badge-preview-description',
     optCloudCache: 'opt-cloud-cache',
+    optCloudApiKey: 'opt-cloud-api-key',
     cloudStatusIndicator: 'cloud-status-indicator',
     cloudStatusText: 'cloud-status-text',
     cloudStats: 'cloud-stats',
@@ -106,7 +107,7 @@ async function initialize() {
     document.getElementById('cache-expiry').textContent = `Up to ${cacheDays} days`;
     for (const [id] of TOGGLES) document.getElementById(id).disabled = true;
     elements.optBadgeSize.disabled = true;
-    elements.optCloudCache.disabled = true;
+    if (elements.optCloudCache) elements.optCloudCache.disabled = true;
     setupNav();
     setupEventListeners();
     browserAPI.runtime.onMessage.addListener(handleMessage);
@@ -130,6 +131,7 @@ async function initialize() {
         if (document.getElementById('panel-stats')?.classList.contains('active')) void loadStatistics();
     });
     void loadCloudCacheStatus();
+    void loadCloudApiKeyField();
     void loadRateLimitStatus();
     startRateLimitMonitor();
     await loadConfiguration();
@@ -422,7 +424,9 @@ function showSaveStatus(message = 'Settings saved', error = false) {
 async function watchCloudStats() {
     const showTotal = value => {
         const total = value?.data?.totalEntries;
-        if (typeof total === 'number') elements.cloudTotalEntries.textContent = total.toLocaleString();
+        if (typeof total === 'number' && elements.cloudTotalEntries) {
+            elements.cloudTotalEntries.textContent = total.toLocaleString();
+        }
     };
     const onChanged = (changes, area) => {
         if (area !== 'local') return;
@@ -487,24 +491,48 @@ function setupEventListeners() {
         elements.optBadgeSize.disabled = false;
     });
 
-    elements.optCloudCache.addEventListener('change', async () => {
-        const enabled = elements.optCloudCache.checked;
-        elements.optCloudCache.disabled = true;
-        try {
-            const response = await browserAPI.runtime.sendMessage({
-                type: MESSAGE_TYPES.SET_CLOUD_CACHE_ENABLED, payload: { enabled }
-            });
-            if (!response?.success) throw new Error(response?.error || 'Save failed');
-            cloudEnabled = enabled;
-            showSaveStatus('Cloud preference saved');
-            await loadCloudCacheStatus();
-        } catch (error) {
-            elements.optCloudCache.checked = cloudEnabled;
-            showSaveStatus('Could not save the cloud preference. Please try again.', true);
-        } finally {
-            elements.optCloudCache.disabled = false;
-        }
-    });
+    // No cloud-cache UI exists in this build (see constants.js), so these
+    // elements are null — guarded rather than deleted outright in case a
+    // future version of this project wants its own, separately-hosted cache.
+    if (elements.optCloudCache) {
+        elements.optCloudCache.addEventListener('change', async () => {
+            const enabled = elements.optCloudCache.checked;
+            elements.optCloudCache.disabled = true;
+            try {
+                const response = await browserAPI.runtime.sendMessage({
+                    type: MESSAGE_TYPES.SET_CLOUD_CACHE_ENABLED, payload: { enabled }
+                });
+                if (!response?.success) throw new Error(response?.error || 'Save failed');
+                cloudEnabled = enabled;
+                showSaveStatus('Cloud preference saved');
+                await loadCloudCacheStatus();
+            } catch (error) {
+                elements.optCloudCache.checked = cloudEnabled;
+                showSaveStatus('Could not save the cloud preference. Please try again.', true);
+            } finally {
+                elements.optCloudCache.disabled = false;
+            }
+        });
+    }
+
+    if (elements.optCloudApiKey) {
+        elements.optCloudApiKey.addEventListener('change', async () => {
+            const apiKey = elements.optCloudApiKey.value;
+            elements.optCloudApiKey.disabled = true;
+            try {
+                const response = await browserAPI.runtime.sendMessage({
+                    type: MESSAGE_TYPES.SET_CLOUD_CACHE_API_KEY, payload: { apiKey }
+                });
+                if (!response?.success) throw new Error(response?.error || 'Save failed');
+                showSaveStatus(apiKey ? 'Cloud cache key saved' : 'Cloud cache key cleared');
+                await loadCloudCacheStatus();
+            } catch (error) {
+                showSaveStatus('Could not save the cloud cache key. Please try again.', true);
+            } finally {
+                elements.optCloudApiKey.disabled = false;
+            }
+        });
+    }
 
     elements.btnClearCache.addEventListener('click', async () => {
         if (!confirm('Clear the local account cache? Your settings and filters will be kept. Account details will be fetched again as needed.')) return;
@@ -520,7 +548,7 @@ function setupEventListeners() {
             elements.btnClearCache.disabled = false;
         }
     });
-    elements.btnSyncToCloud.addEventListener('click', handleSyncToCloud);
+    if (elements.btnSyncToCloud) elements.btnSyncToCloud.addEventListener('click', handleSyncToCloud);
     elements.btnExportCache.addEventListener('click', exportBackup);
     elements.btnImportData.addEventListener('click', () => elements.importFileInput.click());
     elements.importFileInput.addEventListener('change', async event => {
@@ -721,7 +749,22 @@ async function loadStatistics() {
 /**
  * Load cloud cache status
  */
+/**
+ * Pre-fill the API key field from storage. Read directly rather than via
+ * a message, same as watchCloudStats()/checkWhatsNew() elsewhere in this
+ * file -- options.js already has storage access, and this never leaves
+ * the extension's own trusted context.
+ */
+async function loadCloudApiKeyField() {
+    if (!elements.optCloudApiKey) return;
+    const result = await browserAPI.storage.local.get(STORAGE_KEYS.CLOUD_CACHE_API_KEY);
+    const stored = result[STORAGE_KEYS.CLOUD_CACHE_API_KEY];
+    if (typeof stored === 'string') elements.optCloudApiKey.value = stored;
+}
+
 async function loadCloudCacheStatus(committedEnabled) {
+    // No cloud-cache UI in this build — see the note in setupEventListeners().
+    if (!elements.optCloudCache) return;
     const retry = document.getElementById('cloud-status-retry');
     if (retry) retry.disabled = true;
     try {
@@ -761,6 +804,7 @@ async function loadCloudCacheStatus(committedEnabled) {
  * Fetch cloud server statistics (total entries)
  */
 async function fetchCloudServerStats() {
+    if (!elements.optCloudCache) return;
     try {
         const response = await browserAPI.runtime.sendMessage({
             type: MESSAGE_TYPES.GET_CLOUD_SERVER_STATS
@@ -828,8 +872,8 @@ async function handleSyncToCloud() {
  */
 function updateCloudCacheUI(enabled, configured, stats) {
     cloudEnabled = enabled;
-    elements.optCloudCache.disabled = false;
     if (elements.optCloudCache) {
+        elements.optCloudCache.disabled = false;
         elements.optCloudCache.checked = enabled;
     }
 

@@ -37,6 +37,7 @@ class CloudCacheClient {
     constructor() {
         this.enabled = false;
         this.apiUrl = CLOUD_CACHE_CONFIG.API_URL;
+        this.apiKey = null;
         this.lookupBatch = new Set();
         this.lookupBatchTimeout = null;
         this.lookupBatchFirstAt = 0; // When the current un-flushed batch started (for the max-wait cap)
@@ -75,11 +76,15 @@ class CloudCacheClient {
         // Load enabled state + persisted stats from storage
         const result = await browserAPI.storage.local.get([
             STORAGE_KEYS.CLOUD_CACHE_ENABLED,
+            STORAGE_KEYS.CLOUD_CACHE_API_KEY,
             STORAGE_KEYS.CLOUD_STATS,
             STORAGE_KEYS.CLOUD_SERVER_STATS
         ]);
 
         this.enabled = result[STORAGE_KEYS.CLOUD_CACHE_ENABLED] === true;
+        this.apiKey = typeof result[STORAGE_KEYS.CLOUD_CACHE_API_KEY] === 'string'
+            ? result[STORAGE_KEYS.CLOUD_CACHE_API_KEY]
+            : null;
 
         if (result[STORAGE_KEYS.CLOUD_STATS]) {
             this.stats = { ...this.stats, ...result[STORAGE_KEYS.CLOUD_STATS] };
@@ -119,6 +124,29 @@ class CloudCacheClient {
         }
 
         return enabled;
+    }
+
+    /**
+     * Set the community cache API key. An empty string clears it (treated
+     * the same as never having one — isConfigured() requires it truthy).
+     */
+    async setApiKey(key) {
+        if (typeof key !== 'string') throw new TypeError('API key must be a string');
+        const trimmed = key.trim();
+        await browserAPI.storage.local.set({
+            [STORAGE_KEYS.CLOUD_CACHE_API_KEY]: trimmed
+        });
+        this.apiKey = trimmed || null;
+
+        if (this.enabled && this.isConfigured()) {
+            this.refreshServerStats({ timeoutMs: 15000 }).catch(() => {});
+        }
+
+        return this.apiKey;
+    }
+
+    authHeader() {
+        return this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {};
     }
 
     /**
@@ -368,7 +396,8 @@ class CloudCacheClient {
                             method: 'GET',
                             signal,
                             headers: {
-                                'Accept': 'application/json'
+                                'Accept': 'application/json',
+                                ...this.authHeader()
                             }
                         }
                     );
@@ -606,7 +635,8 @@ class CloudCacheClient {
                     method: 'POST',
                     signal,
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        ...this.authHeader()
                     },
                     body: JSON.stringify({ entries })
                 });
@@ -692,7 +722,7 @@ class CloudCacheClient {
      * Check if API URL is configured
      */
     isConfigured() {
-        return this.apiUrl && !this.apiUrl.includes('YOUR_SUBDOMAIN');
+        return !!(this.apiUrl && !this.apiUrl.includes('YOUR_SUBDOMAIN') && this.apiKey);
     }
 
     /**
@@ -751,7 +781,8 @@ class CloudCacheClient {
                         method: 'POST',
                         signal,
                         headers: {
-                            'Content-Type': 'application/json'
+                            'Content-Type': 'application/json',
+                            ...this.authHeader()
                         },
                         body: JSON.stringify({ entries: batchEntries })
                     });
@@ -845,7 +876,8 @@ class CloudCacheClient {
                     method: 'GET',
                     signal,
                     headers: {
-                        'Accept': 'application/json'
+                        'Accept': 'application/json',
+                        ...this.authHeader()
                     }
                 });
 

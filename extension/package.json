@@ -55,16 +55,16 @@
     "location",
     "device"
   ],
-  "author": "xaitax",
+  "author": "",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/xaitax/x-account-location-device"
+    "url": ""
   },
   "bugs": {
-    "url": "https://github.com/xaitax/x-account-location-device/issues"
+    "url": ""
   },
-  "homepage": "https://github.com/xaitax/x-account-location-device#readme",
+  "homepage": "",
   "engines": {
     "node": ">=18.0.0"
   }

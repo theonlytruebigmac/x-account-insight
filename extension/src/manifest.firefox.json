@@ -14,7 +14,7 @@
 
   "browser_specific_settings": {
     "gecko": {
-      "id": "x-posed@xaitax.com",
+      "id": "x-account-insight@local",
       "strict_min_version": "140.0",
       "data_collection_permissions": {
         "required": ["websiteActivity"]
@@ -31,7 +31,8 @@
 
   "host_permissions": [
     "*://*.x.com/*",
-    "*://*.twitter.com/*"
+    "*://*.twitter.com/*",
+    "https://feed.syschimp.com/*"
   ],
 
   "background": {

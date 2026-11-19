@@ -155,6 +155,9 @@ async function handleMessage(message, _sender) {
             
             case MESSAGE_TYPES.SET_CLOUD_CACHE_ENABLED:
                 return await handleSetCloudCacheEnabled(payload);
+
+            case MESSAGE_TYPES.SET_CLOUD_CACHE_API_KEY:
+                return await handleSetCloudCacheApiKey(payload);
             
             case MESSAGE_TYPES.GET_CLOUD_STATS:
                 return handleGetCloudStats();
@@ -931,6 +934,17 @@ async function handleSetCloudCacheEnabled({ enabled }) {
     return {
         success: true,
         enabled: cloudCache.isEnabled()
+    };
+}
+
+/**
+ * Set cloud cache API key handler
+ */
+async function handleSetCloudCacheApiKey({ apiKey }) {
+    await cloudCache.setApiKey(apiKey);
+    return {
+        success: true,
+        configured: cloudCache.isConfigured()
     };
 }
 

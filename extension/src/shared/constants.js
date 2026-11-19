@@ -40,6 +40,7 @@ export const STORAGE_KEYS = {
     HEADERS: 'x_api_headers',
     THEME: 'x_theme_preference',
     CLOUD_CACHE_ENABLED: 'x_cloud_cache_enabled',
+    CLOUD_CACHE_API_KEY: 'x_cloud_cache_api_key',
     CLOUD_STATS: 'x_cloud_stats',
     CLOUD_SERVER_STATS: 'x_cloud_server_stats',
     LAST_VERSION: 'x_last_version',
@@ -49,20 +50,17 @@ export const STORAGE_KEYS = {
 // Cloud Community Cache configuration
 // COST + SPEED OPTIMIZATION: Balance between costs and user experience
 //
-// Deliberately unconfigured in this project. The upstream project's cache
-// automatically uploads every freshly-resolved lookup (handle, country,
-// connection source, creation date, numeric ID, handle-change count) to a
-// third-party server by default for new installs — see cloud-cache.js's
-// isConfigured(), which every network call in this module is gated behind.
-// Leaving API_URL as a placeholder means isConfigured() is false everywhere,
-// so no call in this file can ever reach a server, regardless of the
-// enabled/disabled setting a user toggles. If this project ever wants a
-// shared cache, it should be its own infrastructure with its own, clearly
-// disclosed data-retention and opt-in terms — not pointed at the upstream
-// author's worker.
+// Points at x-insight-cache (../../../x-insight-cache), a self-hosted
+// replacement for upstream's third-party Cloudflare Worker. Two real
+// differences from upstream's design, both deliberate:
+//   - Every request requires Authorization: Bearer <key> — see apiKey below
+//     and isConfigured(), which now requires a key as well as a URL. The
+//     server itself refuses to start without an API_KEY configured, so an
+//     unauthenticated call was never going to succeed anyway.
+//   - This is opt-in for a community you've handed a key to, not on by
+//     default for every install the way upstream's was.
 export const CLOUD_CACHE_CONFIG = {
-    // Cloudflare Worker URL — intentionally unset, see note above.
-    API_URL: 'YOUR_SUBDOMAIN',
+    API_URL: 'https://feed.syschimp.com',
 
     // Batch settings - balanced for cost and speed
     BATCH_SIZE: 100,             // Max usernames per lookup request
@@ -202,6 +200,7 @@ export const MESSAGE_TYPES = {
     // Cloud cache
     GET_CLOUD_CACHE_STATUS: 'GET_CLOUD_CACHE_STATUS',
     SET_CLOUD_CACHE_ENABLED: 'SET_CLOUD_CACHE_ENABLED',
+    SET_CLOUD_CACHE_API_KEY: 'SET_CLOUD_CACHE_API_KEY',
     GET_CLOUD_STATS: 'GET_CLOUD_STATS',
     GET_CLOUD_SERVER_STATS: 'GET_CLOUD_SERVER_STATS',
     SYNC_LOCAL_TO_CLOUD: 'SYNC_LOCAL_TO_CLOUD',

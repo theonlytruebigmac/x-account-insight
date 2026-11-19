@@ -924,7 +924,10 @@ const FILTER_STORAGE_OPTIONS = {
     affiliations: { label: 'blocked affiliations', normalize: normalizeLower },
     links: { label: 'blocked linked domains and URLs', normalize: normalizeLinkRule },
     // First run only. Removing the default keeps it removed (issue #26).
-    allowedUsers: { label: 'always-show accounts', normalize: normalizeUsername, defaults: ['xaitax'] },
+    // No default here in this fork — upstream defaulted to always-showing
+    // the original author's own account, which doesn't make sense for an
+    // independent project's users.
+    allowedUsers: { label: 'always-show accounts', normalize: normalizeUsername, defaults: [] },
     accounts: { label: 'filtered accounts', normalize: normalizeAccountId }
 };
 

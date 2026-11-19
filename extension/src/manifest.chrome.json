@@ -18,7 +18,8 @@
 
   "host_permissions": [
     "*://*.x.com/*",
-    "*://*.twitter.com/*"
+    "*://*.twitter.com/*",
+    "https://feed.syschimp.com/*"
   ],
 
   "background": {
