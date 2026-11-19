@@ -7,19 +7,23 @@ import { API_CONFIG } from '../shared/constants.js';
 import { generateFallbackHeaders } from '../shared/x-api-headers.js';
 import { sleep } from '../shared/utils.js';
 import browserAPI from '../shared/browser-api.js';
-import { RATE_LIMIT_STORAGE_KEY, readRateLimitReset, withLookupTimeout } from '../shared/request-policy.js';
+import {
+    RATE_LIMIT_BUDGET_STORAGE_KEY, RATE_LIMIT_RESERVE_RATIO, RATE_LIMIT_STORAGE_KEY,
+    mergeRateLimitBudget, rateLimitIntervalMs, readRateLimitBudget, readRateLimitReset, withLookupTimeout
+} from '../shared/request-policy.js';
 import { AccountResponseMismatchError, parseAccountResponse } from '../shared/account-response.js';
 
 /**
  * API Error with typed error codes
  */
 export class APIError extends Error {
-    constructor(message, code, statusCode = null, retryAfter = null) {
+    constructor(message, code, statusCode = null, retryAfter = null, deferred = false) {
         super(message);
         this.name = 'APIError';
         this.code = code;
         this.statusCode = statusCode;
         this.retryAfter = retryAfter;
+        this.deferred = deferred;
     }
 }
 
@@ -51,8 +55,10 @@ class RequestQueue {
         this.minInterval = minInterval;
         this.activeRequests = 0;
         this.lastRequestTime = 0;
+        this.baseMinInterval = minInterval;
         this.queue = [];
         this.rateLimitReset = 0;
+        this.rateLimitBudget = null;
         this.scheduled = false;
     }
 
@@ -66,11 +72,8 @@ class RequestQueue {
         });
     }
 
-    // Dispatcher: starts one queued request if concurrency + pacing allow, then
-    // schedules the next start. Requests run concurrently (up to maxConcurrent); only
-    // their START times are paced by minInterval, so we get real parallelism without
-    // firing a burst that trips X's rate limits. (Previously a single `processing`
-    // lock spanned each request's whole lifetime, so effective concurrency was 1.)
+    // Dispatcher: starts one queued request if concurrency + server-informed pacing
+    // allow, then schedules the next start. Requests run concurrently up to maxConcurrent.
     process() {
         if (this.queue.length === 0) return;
         if (this.activeRequests >= this.maxConcurrent) return;
@@ -85,9 +88,10 @@ class RequestQueue {
         }
 
         // Pace request starts (not their lifetimes) by minInterval.
+        const interval = Math.max(this.baseMinInterval, rateLimitIntervalMs(this.rateLimitBudget));
         const timeSinceLast = now - this.lastRequestTime;
-        if (timeSinceLast < this.minInterval) {
-            this.scheduleProcess(this.minInterval - timeSinceLast);
+        if (timeSinceLast < interval) {
+            this.scheduleProcess(interval - timeSinceLast);
             return;
         }
 
@@ -131,6 +135,10 @@ class RequestQueue {
 
     setRateLimit(resetTime) {
         if (Number.isFinite(resetTime)) this.rateLimitReset = Math.max(this.rateLimitReset, resetTime);
+    }
+
+    setRateLimitBudget(budget) {
+        this.rateLimitBudget = mergeRateLimitBudget(this.rateLimitBudget, budget);
     }
 
     get pendingCount() {
@@ -219,9 +227,16 @@ export class XAPIClient {
         this.storage = storage;
         this.rateLimitSave = Promise.resolve();
         // MV3 workers are disposable: a restart must not forget X's reset deadline.
-        this.rateLimitReady = this.storage.get(RATE_LIMIT_STORAGE_KEY).then(result => {
+        this.rateLimitBudget = null;
+        this.nextPageLookupAt = 0;
+        this.rateLimitReady = this.storage.get([RATE_LIMIT_STORAGE_KEY, RATE_LIMIT_BUDGET_STORAGE_KEY]).then(result => {
             const reset = result[RATE_LIMIT_STORAGE_KEY];
             if (Number.isFinite(reset) && reset > Date.now()) this.queue.setRateLimit(reset);
+            const budget = result[RATE_LIMIT_BUDGET_STORAGE_KEY];
+            if (budget) {
+                this.rateLimitBudget = mergeRateLimitBudget(null, budget);
+                this.queue.setRateLimitBudget(this.rateLimitBudget);
+            }
         }).catch(() => {});
     }
 
@@ -276,6 +291,58 @@ export class XAPIClient {
         });
     }
 
+    async recordRateLimitState({ budget, resetTime } = {}) {
+        await this.rateLimitReady;
+        const save = this.rateLimitSave.then(async () => {
+            if (Number.isFinite(resetTime) && resetTime > Date.now()) {
+                this.queue.setRateLimit(resetTime);
+            }
+            if (budget) {
+                const merged = mergeRateLimitBudget(this.rateLimitBudget, budget);
+                if (merged !== this.rateLimitBudget) {
+                    this.rateLimitBudget = merged;
+                    this.queue.setRateLimitBudget(merged);
+                }
+            }
+            const values = {};
+            if (this.queue.rateLimitReset > Date.now()) {
+                values[RATE_LIMIT_STORAGE_KEY] = this.queue.rateLimitReset;
+            }
+            if (this.rateLimitBudget) values[RATE_LIMIT_BUDGET_STORAGE_KEY] = this.rateLimitBudget;
+            if (Object.keys(values).length) await this.storage.set(values);
+            return this.getRateLimitStatus();
+        });
+        this.rateLimitSave = save.catch(error => {
+            console.warn('Could not persist X rate-limit state:', error.message);
+        });
+        await this.rateLimitSave;
+        return this.getRateLimitStatus();
+    }
+
+    /** Reserve a globally paced slot so page-context requests share one budget across tabs. */
+    async reservePageLookupSlot({ priority = false } = {}) {
+        await this.rateLimitReady;
+        await this.rateLimitSave;
+        const now = Date.now();
+        if (this.queue.rateLimitReset > now) {
+            throw new APIError('Rate limit exceeded', API_ERROR_CODES.RATE_LIMITED, 429, this.queue.rateLimitReset);
+        }
+        const budget = this.rateLimitBudget;
+        const reserve = priority ? 0 : (budget ? Math.max(1, Math.ceil(budget.limit * RATE_LIMIT_RESERVE_RATIO)) : 0);
+        if (budget && budget.resetTime > now && budget.remaining <= reserve) {
+            throw new APIError('Request budget reserved for interactive lookups', API_ERROR_CODES.RATE_LIMITED,
+                429, budget.resetTime, true);
+        }
+        const interval = Math.max(API_CONFIG.MIN_INTERVAL_MS,
+            rateLimitIntervalMs(budget, now, priority ? 0 : RATE_LIMIT_RESERVE_RATIO));
+        const slot = Math.max(now, this.nextPageLookupAt);
+        if (slot > now) {
+            throw new APIError('Request pacing delay', API_ERROR_CODES.RATE_LIMITED, 429, slot, true);
+        }
+        this.nextPageLookupAt = slot + interval;
+        return { waitMs: 0 };
+    }
+
     /**
      * Execute the actual API request with retry logic for transient failures
      */
@@ -309,6 +376,7 @@ export class XAPIClient {
         requestHeaders['accept-language'] = 'en-US,en;q=0.9';
 
         try {
+            await this.reservePageLookupSlot();
             return await withLookupTimeout(async signal => {
                 const response = await fetch(url, {
                     headers: requestHeaders,
@@ -317,6 +385,8 @@ export class XAPIClient {
                     credentials: 'include',
                     signal
                 });
+                const budget = readRateLimitBudget(response.headers);
+                if (budget) await this.recordRateLimitState({ budget });
                 if (!response.ok) await this.handleErrorResponse(response);
                 return this.parseResponse(await response.json(), screenName);
             });
@@ -357,12 +427,8 @@ export class XAPIClient {
     async handleErrorResponse(response) {
         if (response.status === 429) {
             const retryAfter = readRateLimitReset(response.headers);
-            this.queue.setRateLimit(retryAfter);
-            // Set memory first; storage failure must never turn a 429 into a retry.
-            this.rateLimitSave = this.rateLimitSave.then(() =>
-                this.storage.set({ [RATE_LIMIT_STORAGE_KEY]: this.queue.rateLimitReset })
-            ).catch(() => {});
-            await this.rateLimitSave;
+            const budget = readRateLimitBudget(response.headers);
+            await this.recordRateLimitState({ resetTime: retryAfter, budget });
             const waitMinutes = Math.ceil((retryAfter - Date.now()) / 60000);
             
             console.warn(`⚠️ Rate limited. Retry in ${waitMinutes} minute(s)`);
@@ -432,7 +498,8 @@ export class XAPIClient {
         return {
             isRateLimited,
             resetTime: isRateLimited ? resetTime : null,
-            remainingMs: isRateLimited ? resetTime - now : null
+            remainingMs: isRateLimited ? resetTime - now : null,
+            rateLimitBudget: this.rateLimitBudget
         };
     }
 

@@ -7,7 +7,9 @@
  * content script via CustomEvents.
  */
 
-import { PacedLookupQueue, readRateLimitReset } from '../shared/request-policy.js';
+import {
+    PacedLookupQueue, readRateLimitBudget, readRateLimitReset
+} from '../shared/request-policy.js';
 import { PROFILE_LIMITS, isProfileUsername, projectProfileUser, mergeProjectedProfile, profileSignature } from '../shared/profile-data.js';
 import { parseAccountResponse } from '../shared/account-response.js';
 import { FOLLOWING_LIMITS, isFollowingHandle, projectFollowingUser, readFollowingViewer } from '../shared/following-data.js';
@@ -53,6 +55,69 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
         maxConcurrent: API_CONFIG.MAX_CONCURRENT
     });
     const pendingLookups = new Map();
+    let rateSlotSequence = 0;
+
+    function acquireSharedRateLimitSlot(signal, priority) {
+        return new Promise((resolve, reject) => {
+            const id = `${Date.now()}-${++rateSlotSequence}`;
+            const onResult = event => {
+                let result;
+                try { result = JSON.parse(event.detail || '{}'); } catch { return; }
+                if (result.id !== id) return;
+                cleanup();
+                if (!result.success) {
+                    if (result.code === 'RATE_LIMITED' && !result.deferred && Number.isFinite(result.retryAfter)) {
+                        lookupQueue.setRateLimit(result.retryAfter);
+                    }
+                    reject(Object.assign(new Error(result.error || 'Could not reserve an X API request slot'), {
+                        code: result.code || 'NETWORK_ERROR',
+                        retryAfter: result.retryAfter || null
+                    }));
+                    return;
+                }
+                resolve(result.waitMs || 0);
+            };
+            const onAbort = () => {
+                cleanup();
+                reject(Object.assign(new Error('Account lookup timed out'), { code: 'TIMEOUT' }));
+            };
+            const cleanup = () => {
+                window.removeEventListener('x-posed-rate-limit-slot-result', onResult);
+                signal.removeEventListener('abort', onAbort);
+            };
+            window.addEventListener('x-posed-rate-limit-slot-result', onResult);
+            signal.addEventListener('abort', onAbort, { once: true });
+            window.dispatchEvent(new CustomEvent('x-posed-acquire-rate-slot', {
+                detail: JSON.stringify({ id, priority })
+            }));
+        });
+    }
+
+    async function waitForSharedRateLimitSlot(signal, priority) {
+        const waitMs = await acquireSharedRateLimitSlot(signal, priority);
+        if (waitMs <= 0) return;
+        await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => {
+                signal.removeEventListener('abort', onAbort);
+                resolve();
+            }, waitMs);
+            const onAbort = () => {
+                clearTimeout(timer);
+                signal.removeEventListener('abort', onAbort);
+                reject(Object.assign(new Error('Account lookup timed out'), { code: 'TIMEOUT' }));
+            };
+            signal.addEventListener('abort', onAbort, { once: true });
+        });
+    }
+
+    window.addEventListener('x-posed-rate-limit-state-updated', event => {
+        let state;
+        try { state = JSON.parse(event.detail || '{}'); } catch { return; }
+        if (Number.isFinite(state.resetTime) && state.resetTime > Date.now()) {
+            lookupQueue.setRateLimit(state.resetTime);
+        }
+    });
+    window.dispatchEvent(new CustomEvent('x-posed-request-rate-limit-state'));
 
     // Never collect profile text before the content script has loaded the user's
     // preference. Its ready/settings handshake enables passive harvesting explicitly.
@@ -399,13 +464,21 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
                     }
                     const variables = encodeURIComponent(JSON.stringify({ screenName }));
                     const url = `/i/api/graphql/${ABOUT_QUERY_ID}/AboutAccountQuery?variables=${variables}`;
+                    await waitForSharedRateLimitSlot(signal, fullMetadata);
                     const response = await fetch(url, {
                         headers: { ...headers, 'accept-language': 'en-US,en;q=0.9' },
                         method: 'GET', credentials: 'include', signal
                     });
+                    const rateLimitBudget = readRateLimitBudget(response.headers);
+                    const resetTime = response.status === 429 ? readRateLimitReset(response.headers) : null;
+                    if (rateLimitBudget || Number.isFinite(resetTime)) {
+                        if (response.status === 429) lookupQueue.setRateLimit(resetTime);
+                        window.dispatchEvent(new CustomEvent('x-posed-rate-limit-state', {
+                            detail: JSON.stringify({ resetTime, budget: rateLimitBudget })
+                        }));
+                    }
                     if (response.status === 429) {
-                        lookupQueue.setRateLimit(readRateLimitReset(response.headers));
-                        throw lookupQueue.rateLimitError();
+                        throw Object.assign(lookupQueue.rateLimitError(), { retryAfter: resetTime });
                     }
                     if (response.status === 401 || response.status === 403) {
                         headersCaptured = false;
@@ -422,7 +495,7 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
                         throw Object.assign(new Error('Account changed during lookup'), { code: 'CANCELLED' });
                     }
                     return parseAccountResponse(body, screenName, { fullMetadata });
-                }).finally(() => { pendingLookups.delete(key); });
+                }, { priority: fullMetadata }).finally(() => { pendingLookups.delete(key); });
                 pendingLookups.set(key, pending);
             }
             const data = await pendingLookups.get(key);

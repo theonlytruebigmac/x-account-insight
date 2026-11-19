@@ -1,6 +1,9 @@
 /** Common handling for X lookup deadlines and server-directed cooldowns. */
 export const LOOKUP_TIMEOUT_MS = 8000;
 export const RATE_LIMIT_STORAGE_KEY = 'x_api_rate_limit_reset';
+export const RATE_LIMIT_BUDGET_STORAGE_KEY = 'x_api_rate_limit_budget';
+/** Reserve this portion of the observed window for interactive account-card lookups. */
+export const RATE_LIMIT_RESERVE_RATIO = 0.15;
 
 export class RequestTimeoutError extends Error {
     constructor() {
@@ -33,6 +36,43 @@ export function readRateLimitReset(headers, now = Date.now()) {
         if (Number.isFinite(deadline) && deadline > now) deadlines.push(deadline);
     }
     return deadlines.length ? Math.max(...deadlines) : now + 60000;
+}
+
+/** Read the budget fields X exposes for an endpoint's current rate-limit window. */
+export function readRateLimitBudget(headers, now = Date.now()) {
+    const reset = Number(headers?.get('x-rate-limit-reset')) * 1000;
+    const remaining = Number(headers?.get('x-rate-limit-remaining'));
+    const limit = Number(headers?.get('x-rate-limit-limit'));
+    if (!Number.isFinite(reset) || reset <= now ||
+        !Number.isInteger(remaining) || remaining < 0 ||
+        !Number.isInteger(limit) || limit < 1) return null;
+    return { resetTime: reset, remaining, limit };
+}
+
+/** Merge concurrent observations conservatively; an older response must not refill quota. */
+export function mergeRateLimitBudget(current, incoming, now = Date.now()) {
+    if (!incoming || !Number.isFinite(incoming.resetTime) || incoming.resetTime <= now ||
+        !Number.isInteger(incoming.remaining) || incoming.remaining < 0 ||
+        !Number.isInteger(incoming.limit) || incoming.limit < 1) return current || null;
+    if (!current || !Number.isFinite(current.resetTime) || current.resetTime <= now ||
+        incoming.resetTime > current.resetTime) return { ...incoming };
+    if (incoming.resetTime < current.resetTime) return current;
+    return {
+        resetTime: current.resetTime,
+        remaining: Math.min(current.remaining, incoming.remaining),
+        limit: Math.min(current.limit, incoming.limit)
+    };
+}
+
+/** Pace within the observed window while preserving the configured request reserve. */
+export function rateLimitIntervalMs(budget, now = Date.now(), reserveRatio = RATE_LIMIT_RESERVE_RATIO) {
+    if (!budget || !Number.isFinite(budget.resetTime) || budget.resetTime <= now ||
+        !Number.isInteger(budget.remaining) || budget.remaining < 0 ||
+        !Number.isInteger(budget.limit) || budget.limit < 1) return 0;
+    const reserve = reserveRatio > 0 ? Math.max(1, Math.ceil(budget.limit * reserveRatio)) : 0;
+    const usable = budget.remaining - reserve;
+    if (usable <= 0) return budget.resetTime - now;
+    return Math.ceil((budget.resetTime - now) / usable);
 }
 
 /** Bound the whole operation, including response decoding, and always clear its timer. */
@@ -84,13 +124,13 @@ export class PacedLookupQueue {
         this.pump();
     }
 
-    add(operation) {
+    add(operation, { priority = false } = {}) {
         return withLookupTimeout(signal => new Promise((resolve, reject) => {
             if (this.resetTime > Date.now()) {
                 reject(this.rateLimitError());
                 return;
             }
-            const item = { operation, signal, resolve, reject, deadline: Date.now() + this.timeoutMs };
+            const item = { operation, signal, resolve, reject, priority, deadline: Date.now() + this.timeoutMs };
             const onAbort = () => {
                 const index = this.pending.indexOf(item);
                 if (index !== -1) this.pending.splice(index, 1);
@@ -100,7 +140,9 @@ export class PacedLookupQueue {
             };
             signal.addEventListener('abort', onAbort, { once: true });
             item.cleanup = () => signal.removeEventListener('abort', onAbort);
-            this.pending.push(item);
+            const firstNormal = priority ? this.pending.findIndex(queued => !queued.priority) : -1;
+            if (firstNormal === -1) this.pending.push(item);
+            else this.pending.splice(firstNormal, 0, item);
             this.pump();
         }), this.timeoutMs);
     }

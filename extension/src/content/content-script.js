@@ -216,6 +216,16 @@ function injectPageScript(current) {
  * Listen for events from page script
  */
 function setupPageScriptListener(current) {
+    const publishRateLimitState = status => {
+        if (!status?.success) return;
+        window.dispatchEvent(new CustomEvent('x-posed-rate-limit-state-updated', {
+            detail: JSON.stringify({
+                resetTime: status.resetTime,
+                rateLimitBudget: status.rateLimitBudget
+            })
+        }));
+    };
+
     current.listen(window, 'x-posed-headers-captured', async event => {
         let headers;
         try {
@@ -238,6 +248,45 @@ function setupPageScriptListener(current) {
                 chatBadges?.retry();
             }, 250);
         }
+    });
+
+    current.listen(window, 'x-posed-request-rate-limit-state', () => {
+        void sendMessage({ type: MESSAGE_TYPES.GET_RATE_LIMIT_STATUS })
+            .then(publishRateLimitState)
+            .catch(error => console.warn('X-Posed: Could not load X rate-limit state:', error.message));
+    });
+
+    current.listen(window, 'x-posed-rate-limit-state', event => {
+        let state;
+        try {
+            state = JSON.parse(event.detail || '{}');
+        } catch {
+            return;
+        }
+        void sendMessage({ type: MESSAGE_TYPES.UPDATE_RATE_LIMIT_STATE, payload: state })
+            .catch(error => console.warn('X-Posed: Could not share X rate-limit state:', error.message));
+    });
+
+    current.listen(window, 'x-posed-acquire-rate-slot', async event => {
+        let request;
+        try {
+            request = JSON.parse(event.detail || '{}');
+        } catch {
+            return;
+        }
+        if (typeof request.id !== 'string' || request.id.length > 100) return;
+        let response;
+        try {
+            response = await sendMessage({
+                type: MESSAGE_TYPES.ACQUIRE_RATE_LIMIT_SLOT,
+                payload: { priority: request.priority === true }
+            });
+        } catch (error) {
+            response = { success: false, code: 'NETWORK_ERROR', error: error.message };
+        }
+        window.dispatchEvent(new CustomEvent('x-posed-rate-limit-slot-result', {
+            detail: JSON.stringify({ id: request.id, ...response })
+        }));
     });
 }
 
@@ -577,6 +626,13 @@ function setupProfileListener(current) {
  */
 function setupBackgroundListener(current) {
     const messageHandler = (message, sender, sendResponse) => {
+        if (message.type === MESSAGE_TYPES.RATE_LIMIT_STATE_UPDATED) {
+            window.dispatchEvent(new CustomEvent('x-posed-rate-limit-state-updated', {
+                detail: JSON.stringify(message.payload || {})
+            }));
+            sendResponse({ success: true });
+            return false;
+        }
         if (message.type === PROFILE_MESSAGES.GET_PROFILE_CONTEXT) {
             const respond = () => sendResponse({ success: profileClient !== null,
                 accountId: currentAccountId(), profileId: profileClient?.state.ready

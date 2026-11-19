@@ -6,6 +6,7 @@ All notable changes to X-Posed will be documented in this file.
 
 ### Improvements
 
+- **X API lookups share a conservative request budget:** Request starts are coordinated across tabs and paced from X's remaining/reset headers, reserving 15% for interactive lookups. A server rate-limit cooldown is shared with page-context lookups and survives background restarts.
 - **Community cache does more of the work:** Lookups stay within a client-side request budget sized just under the server's limits. When that budget is briefly spent, a batch now waits a moment and keeps growing, instead of falling through to X. Recent cloud misses and affiliation re-checks are remembered, so repeated renders don't re-ask. When X rate-limits you, rows re-check the community cache after about two minutes, without waiting for X's reset and without any extra X requests.
 - **Contributions arrive reliably:**
   - Pending uploads now survive the background restarting.

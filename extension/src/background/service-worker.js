@@ -102,6 +102,29 @@ async function handleMessage(message, _sender) {
             
             case MESSAGE_TYPES.CAPTURE_HEADERS:
                 return await handleCaptureHeaders(payload);
+
+            case MESSAGE_TYPES.ACQUIRE_RATE_LIMIT_SLOT:
+                try {
+                    return { success: true, ...await apiClient.reservePageLookupSlot(payload) };
+                } catch (error) {
+                    return { success: false, code: error.code || API_ERROR_CODES.UNKNOWN,
+                        error: error.message, retryAfter: error.retryAfter || null,
+                        deferred: error.deferred === true };
+                }
+
+            case MESSAGE_TYPES.UPDATE_RATE_LIMIT_STATE: {
+                await apiClient.recordRateLimitState(payload);
+                const status = apiClient.getRateLimitStatus();
+                const update = {
+                    type: MESSAGE_TYPES.RATE_LIMIT_STATE_UPDATED,
+                    payload: {
+                        resetTime: status.resetTime,
+                        rateLimitBudget: status.rateLimitBudget
+                    }
+                };
+                await broadcastToAll(update);
+                return { success: true };
+            }
             
             case MESSAGE_TYPES.GET_CACHE:
                 return handleGetCache(payload);

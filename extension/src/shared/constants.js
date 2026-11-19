@@ -3,7 +3,7 @@
  * Centralized configuration for cross-browser compatibility
  *
  * CHANGELOG v2.5.0:
- * - API: MIN_INTERVAL 300→150ms, MAX_CONCURRENT 5→8 (faster lookups)
+ * - API: paced lookups use a shared, server-informed request budget
  * - Cloud: BATCH_DELAY 500→200ms (faster cloud response)
  * - Timing: Reduced delays for snappier UX
  * - Cache: Save interval 30→60s (less I/O)
@@ -143,8 +143,8 @@ export const CACHE_CONFIG = {
 export const API_CONFIG = {
     QUERY_ID: 'XRqGa7EeokUU5kppkh13EA', // AboutAccountQuery
     BASE_URL: 'https://x.com/i/api/graphql',
-    MIN_INTERVAL_MS: 150,    // Reduced from 300ms for faster lookups
-    MAX_CONCURRENT: 8,       // Increased from 5 for more parallel requests
+    MIN_INTERVAL_MS: 1000,   // Conservative until X provides a usable budget header
+    MAX_CONCURRENT: 2,
     RETRY_DELAY_MS: 1000,    // Reduced from 3000ms, uses exponential backoff
     MAX_RETRIES: 2,
     RATE_LIMIT_WINDOW_MS: 60000
@@ -176,6 +176,9 @@ export const MESSAGE_TYPES = {
     FETCH_USER_INFO: 'FETCH_USER_INFO',
     FETCH_HOVERCARD_INFO: 'FETCH_HOVERCARD_INFO',
     CAPTURE_HEADERS: 'CAPTURE_HEADERS',
+    ACQUIRE_RATE_LIMIT_SLOT: 'ACQUIRE_RATE_LIMIT_SLOT',
+    UPDATE_RATE_LIMIT_STATE: 'UPDATE_RATE_LIMIT_STATE',
+    RATE_LIMIT_STATE_UPDATED: 'RATE_LIMIT_STATE_UPDATED',
     GET_CACHE: 'GET_CACHE',
     SET_CACHE: 'SET_CACHE',
     GET_SETTINGS: 'GET_SETTINGS',
