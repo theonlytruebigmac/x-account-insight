@@ -8,8 +8,8 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
 import { sleep } from '../shared/utils.js';
 import browserAPI from '../shared/browser-api.js';
 import {
-    RATE_LIMIT_BUDGET_STORAGE_KEY, RATE_LIMIT_RESERVE_RATIO, RATE_LIMIT_STORAGE_KEY,
-    mergeRateLimitBudget, rateLimitIntervalMs, readRateLimitBudget, readRateLimitReset, withLookupTimeout
+    PAGE_LOOKUP_BURST, RATE_LIMIT_BUDGET_STORAGE_KEY, RATE_LIMIT_RESERVE_RELEASE_MS, RATE_LIMIT_STORAGE_KEY,
+    lookupReserveRatio, mergeRateLimitBudget, rateLimitIntervalMs, readRateLimitBudget, readRateLimitReset, withLookupTimeout
 } from '../shared/request-policy.js';
 import { AccountResponseMismatchError, parseAccountResponse } from '../shared/account-response.js';
 
@@ -111,7 +111,7 @@ class RequestQueue {
             const result = await item.request();
             item.resolve(result);
         } catch (error) {
-            if (error instanceof APIError && error.code === API_ERROR_CODES.RATE_LIMITED) {
+            if (error instanceof APIError && error.code === API_ERROR_CODES.RATE_LIMITED && !error.deferred) {
                 this.setRateLimit(error.retryAfter || (Date.now() + 60000));
             }
             item.reject(error);
@@ -328,14 +328,16 @@ export class XAPIClient {
             throw new APIError('Rate limit exceeded', API_ERROR_CODES.RATE_LIMITED, 429, this.queue.rateLimitReset);
         }
         const budget = this.rateLimitBudget;
-        const reserve = priority ? 0 : (budget ? Math.max(1, Math.ceil(budget.limit * RATE_LIMIT_RESERVE_RATIO)) : 0);
+        const reserveRatio = lookupReserveRatio(budget, now, priority);
+        const reserve = reserveRatio > 0 ? Math.max(1, Math.ceil(budget.limit * reserveRatio)) : 0;
         if (budget && budget.resetTime > now && budget.remaining <= reserve) {
+            // Normal lookups resume when the reserve is released; an empty budget waits for the reset.
             throw new APIError('Request budget reserved for interactive lookups', API_ERROR_CODES.RATE_LIMITED,
-                429, budget.resetTime, true);
+                429, reserve > 0 ? budget.resetTime - RATE_LIMIT_RESERVE_RELEASE_MS : budget.resetTime, true);
         }
-        const interval = Math.max(API_CONFIG.MIN_INTERVAL_MS,
-            rateLimitIntervalMs(budget, now, priority ? 0 : RATE_LIMIT_RESERVE_RATIO));
-        const slot = Math.max(now, this.nextPageLookupAt);
+        const interval = Math.max(API_CONFIG.MIN_INTERVAL_MS, rateLimitIntervalMs(budget, now, reserveRatio));
+        // GCRA: idle time banks up to PAGE_LOOKUP_BURST starts without raising the average rate.
+        const slot = Math.max(now - interval * (PAGE_LOOKUP_BURST - 1), this.nextPageLookupAt);
         if (slot > now) {
             throw new APIError('Request pacing delay', API_ERROR_CODES.RATE_LIMITED, 429, slot, true);
         }

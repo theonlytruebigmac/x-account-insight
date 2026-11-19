@@ -6,7 +6,8 @@ All notable changes to X-Posed will be documented in this file.
 
 ### Improvements
 
-- **X API lookups share a conservative request budget:** Request starts are coordinated across tabs and paced from X's remaining/reset headers, reserving 15% for interactive lookups. A server rate-limit cooldown is shared with page-context lookups and survives background restarts.
+- **X API lookups share a conservative request budget:** Request starts are coordinated across tabs and paced from X's remaining/reset headers, reserving 15% for account cards you open. In the final minute of each window that reserve is released to timeline lookups, so it isn't wasted. A server rate-limit cooldown is shared with page-context lookups and survives background restarts.
+- **Fewer wasted X lookups while scrolling:** An account is looked up on X only if its row stays on or near the screen for half a second, so rows you scroll past quickly no longer use your quota. After a quiet period, up to three lookups can start together, so a newly loaded screen resolves faster without raising the overall rate.
 - **Community cache does more of the work:** Lookups stay within a client-side request budget sized just under the server's limits. When that budget is briefly spent, a batch now waits a moment and keeps growing, instead of falling through to X. Recent cloud misses and affiliation re-checks are remembered, so repeated renders don't re-ask. When X rate-limits you, rows re-check the community cache after about two minutes, without waiting for X's reset and without any extra X requests.
 - **Contributions arrive reliably:**
   - Pending uploads now survive the background restarting.
@@ -22,6 +23,8 @@ All notable changes to X-Posed will be documented in this file.
 ### Fixes
 
 - Community-cache records now distinguish "checked, no affiliation" from "not checked", so affiliation filters can use a definitive no-affiliation result without requiring another X lookup.
+- The extension's own request pacing no longer shows the "Rate limited" warning. It also no longer starts a cooldown as if X had returned a 429. The warning now appears only when X actually rate-limits you.
+- Timeline lookups no longer use the request reserve meant for account cards.
 
 ## [4.4.0] - 2026-11-08
 

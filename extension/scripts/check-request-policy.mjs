@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
-    mergeRateLimitBudget, PacedLookupQueue, rateLimitIntervalMs, readRateLimitBudget
+    mergeRateLimitBudget, PacedLookupQueue, PAGE_LOOKUP_BURST, RATE_LIMIT_RESERVE_RELEASE_MS,
+    rateLimitIntervalMs, readRateLimitBudget
 } from '../src/shared/request-policy.js';
 
 const now = 1_800_000_000_000;
@@ -16,6 +17,10 @@ assert.deepEqual(readRateLimitBudget(headers({
     limit: 100
 });
 assert.equal(readRateLimitBudget(headers({ 'x-rate-limit-remaining': '80' }), now), null);
+assert.equal(readRateLimitBudget(headers({
+    'x-rate-limit-reset': String((now + 900_000) / 1000),
+    'x-rate-limit-limit': '100'
+}), now), null, 'an absent remaining header is unknown, not zero');
 
 const first = { resetTime: now + 900_000, remaining: 80, limit: 100 };
 assert.deepEqual(mergeRateLimitBudget(first, {
@@ -33,17 +38,35 @@ assert.equal(rateLimitIntervalMs(first, now, 0), Math.ceil(900_000 / 80));
 globalThis.browser = { storage: { local: { get: async () => ({}), set: async () => {} } } };
 const { API_ERROR_CODES, XAPIClient } = await import('../src/background/api-client.js');
 delete globalThis.browser;
-const apiClient = new XAPIClient({ get: async () => ({}), set: async () => {} });
-const resetTime = Date.now() + 60_000;
+const storage = { get: async () => ({}), set: async () => {} };
+const apiClient = new XAPIClient(storage);
+const resetTime = Date.now() + 600_000;
 await apiClient.recordRateLimitState({
     budget: { resetTime, remaining: 2, limit: 10 }
 });
 assert.equal(apiClient.getRateLimitStatus().isRateLimited, false);
+// Passive lookups stop at the reserve and resume once it is released before the reset.
 await assert.rejects(apiClient.reservePageLookupSlot(), error =>
-    error.code === API_ERROR_CODES.RATE_LIMITED && error.deferred && error.retryAfter === resetTime);
+    error.code === API_ERROR_CODES.RATE_LIMITED && error.deferred &&
+    error.retryAfter === resetTime - RATE_LIMIT_RESERVE_RELEASE_MS);
 assert.deepEqual(await apiClient.reservePageLookupSlot({ priority: true }), { waitMs: 0 });
-await assert.rejects(apiClient.reservePageLookupSlot({ priority: true }), error =>
-    error.code === API_ERROR_CODES.RATE_LIMITED && error.deferred && error.retryAfter > Date.now());
+
+// In the window's final minute an unspent reserve is released to passive lookups.
+const closingClient = new XAPIClient(storage);
+const closingReset = Date.now() + 30_000;
+await closingClient.recordRateLimitState({ budget: { resetTime: closingReset, remaining: 1, limit: 10 } });
+assert.deepEqual(await closingClient.reservePageLookupSlot(), { waitMs: 0 });
+await closingClient.recordRateLimitState({ budget: { resetTime: closingReset, remaining: 0, limit: 10 } });
+await assert.rejects(closingClient.reservePageLookupSlot(), error =>
+    error.deferred && error.retryAfter === closingReset);
+
+// Idle time banks a small burst; the next start is then paced again.
+const burstClient = new XAPIClient(storage);
+for (let i = 0; i < PAGE_LOOKUP_BURST; i++) {
+    assert.deepEqual(await burstClient.reservePageLookupSlot(), { waitMs: 0 });
+}
+await assert.rejects(burstClient.reservePageLookupSlot(), error =>
+    error.deferred && error.retryAfter > Date.now());
 
 const queue = new PacedLookupQueue({ minIntervalMs: 0, maxConcurrent: 1 });
 const started = [];

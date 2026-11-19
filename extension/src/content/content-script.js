@@ -106,7 +106,7 @@ function debug(...args) {
     }
 }
 
-function fetchUserInfoViaPage(screenName, { fullMetadata = false } = {}) {
+function fetchUserInfoViaPage(screenName, { fullMetadata = false, priority = false } = {}) {
     const current = session;
     if (!current || current.disposed) return Promise.resolve(cancelledResponse());
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -138,7 +138,7 @@ function fetchUserInfoViaPage(screenName, { fullMetadata = false } = {}) {
         }), 10000);
         forget = current.add(() => finish(cancelledResponse()));
         window.dispatchEvent(new CustomEvent('x-posed-fetch-user-info', {
-            detail: JSON.stringify({ id, screenName, fullMetadata, viewer })
+            detail: JSON.stringify({ id, screenName, fullMetadata, priority, viewer })
         }));
     });
 }

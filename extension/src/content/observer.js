@@ -627,6 +627,22 @@ const LOOKUP_RETRY_DELAY_MS = 60000;
 // once someone else contributes it, so re-check sooner than X's reset (which can be
 // 15 minutes away). The re-check costs no X calls: the page queue stays blocked.
 const CLOUD_RECHECK_DELAY_MS = 2 * 60 * 1000;
+// Lookups start this far outside the viewport. A row must stay inside that same band
+// for the dwell time before it may spend X quota; rows flicked past are re-queued instead.
+const VISIBILITY_MARGIN_PX = 200;
+const PAGE_LOOKUP_DWELL_MS = 500;
+
+function isNearViewport(element) {
+    if (!element.isConnected) return false;
+    const rect = element.getBoundingClientRect();
+    const height = window.innerHeight || document.documentElement.clientHeight;
+    return rect.bottom > -VISIBILITY_MARGIN_PX && rect.top < height + VISIBILITY_MARGIN_PX &&
+        (rect.width > 0 || rect.height > 0);
+}
+
+function dwellsNearViewport(element) {
+    return new Promise(resolve => setTimeout(() => resolve(isNearViewport(element)), PAGE_LOOKUP_DWELL_MS));
+}
 
 function clearRetryState(element) {
     delete element.dataset.xRetryAfter;
@@ -1090,7 +1106,7 @@ export function startIntersectionObserver(processElementSafe, _debug) {
             }
         },
         {
-            rootMargin: '200px',
+            rootMargin: `${VISIBILITY_MARGIN_PX}px`,
             threshold: 0
         }
     );
@@ -1547,12 +1563,14 @@ export async function processElement(element, {
         // The row may have changed while waiting; applyCurrentInfo checks ownership.
         applyCurrentInfo(userInfoCache.get(screenName) || null);
         if (result?.retryAt && isCurrentElement()) deferElementRetry(element, screenName, result.retryAt);
+        else if (result?.skipped && isCurrentElement() && !userInfoCache.has(screenName)) delete element.dataset.xProcessed;
         return;
     }
 
     // Create the processing promise and store it for waiting
     let resolveProcessing;
     let retryAt = null;
+    let skipped = false;
     const processingPromise = new Promise(resolve => {
         resolveProcessing = resolve;
     });
@@ -1608,6 +1626,15 @@ export async function processElement(element, {
         // cookie mismatch), retry the lookup from the PAGE context — which uses the
         // page's own correct session — then cache the result via the background.
         if (['UNAUTHORIZED', 'NO_HEADERS', 'PAGE_CONTEXT_REQUIRED'].includes(response?.code) && fetchUserInfoViaPage) {
+            // Only rows the user actually stops on may spend X quota. Others are left
+            // unprocessed so the next scan re-queues them if they scroll back into view.
+            const dwelled = await dwellsNearViewport(element);
+            if (!isCurrentProcessing()) return;
+            if (!dwelled) {
+                skipped = true;
+                if (isCurrentElement()) delete element.dataset.xProcessed;
+                return;
+            }
             const pageResponse = await fetchUserInfoViaPage(screenName, { fullMetadata: response.code === 'PAGE_CONTEXT_REQUIRED' });
             if (!isCurrentProcessing()) return;
             // Keep the page's actual failure code too, so a rate limit or timeout
@@ -1634,7 +1661,8 @@ export async function processElement(element, {
             if (!isCurrentElement()) return;
             applyCurrentInfo(null);
             if (retryAt) deferElementRetry(element, screenName, retryAt);
-            if (response?.code === 'RATE_LIMITED') {
+            // A deferred result is local pacing, not an X 429; it retries quietly.
+            if (response?.code === 'RATE_LIMITED' && !response.deferred) {
                 const resetDate = response.retryAfter ? new Date(response.retryAfter) : null;
                 let resetStr = 'unknown';
                 let relativeStr = '';
@@ -1701,7 +1729,7 @@ export async function processElement(element, {
         if (isCurrentElement()) deferElementRetry(element, screenName, retryAt);
         if (debug) debug(`Processing error for @${screenName}: ${error?.message || error}`);
     } finally {
-        finishProcessing({ retryAt }); // Waiting rows inherit the same retry deadline.
+        finishProcessing({ retryAt, skipped }); // Waiting rows inherit the same retry deadline.
     }
 }
 

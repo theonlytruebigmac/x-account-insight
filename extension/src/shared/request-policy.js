@@ -4,6 +4,16 @@ export const RATE_LIMIT_STORAGE_KEY = 'x_api_rate_limit_reset';
 export const RATE_LIMIT_BUDGET_STORAGE_KEY = 'x_api_rate_limit_budget';
 /** Reserve this portion of the observed window for interactive account-card lookups. */
 export const RATE_LIMIT_RESERVE_RATIO = 0.15;
+/** Near the reset, an unspent reserve would be lost, so passive lookups may use it. */
+export const RATE_LIMIT_RESERVE_RELEASE_MS = 60000;
+/** Idle time may bank this many paced starts, so a freshly loaded screen resolves together. */
+export const PAGE_LOOKUP_BURST = 3;
+
+/** Reserve ratio applied to one lookup, given its priority and the window's remaining time. */
+export function lookupReserveRatio(budget, now = Date.now(), priority = false) {
+    if (priority || !budget || !Number.isFinite(budget.resetTime)) return 0;
+    return budget.resetTime - now > RATE_LIMIT_RESERVE_RELEASE_MS ? RATE_LIMIT_RESERVE_RATIO : 0;
+}
 
 export class RequestTimeoutError extends Error {
     constructor() {
@@ -40,9 +50,14 @@ export function readRateLimitReset(headers, now = Date.now()) {
 
 /** Read the budget fields X exposes for an endpoint's current rate-limit window. */
 export function readRateLimitBudget(headers, now = Date.now()) {
-    const reset = Number(headers?.get('x-rate-limit-reset')) * 1000;
-    const remaining = Number(headers?.get('x-rate-limit-remaining'));
-    const limit = Number(headers?.get('x-rate-limit-limit'));
+    // Number(null) is 0: an absent header must not read as an exhausted budget.
+    const read = name => {
+        const value = headers?.get(name);
+        return value === null || value === undefined || String(value).trim() === '' ? NaN : Number(value);
+    };
+    const reset = read('x-rate-limit-reset') * 1000;
+    const remaining = read('x-rate-limit-remaining');
+    const limit = read('x-rate-limit-limit');
     if (!Number.isFinite(reset) || reset <= now ||
         !Number.isInteger(remaining) || remaining < 0 ||
         !Number.isInteger(limit) || limit < 1) return null;

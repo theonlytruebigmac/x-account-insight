@@ -1604,7 +1604,7 @@ class HovercardController {
             })
                 .then(async result => {
                     if (result?.code !== 'PAGE_CONTEXT_REQUIRED' || !context?.fetchUserInfoViaPage) return result;
-                    const page = await context.fetchUserInfoViaPage(screenName, { fullMetadata: true });
+                    const page = await context.fetchUserInfoViaPage(screenName, { fullMetadata: true, priority: true });
                     if (generation !== this.generation) return { success: false, code: 'CANCELLED' };
                     if (!page?.success || !page.data) return page;
                     const data = { ...page.data, timestamp: Date.now(), fromCloud: false };

@@ -71,7 +71,8 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
                     }
                     reject(Object.assign(new Error(result.error || 'Could not reserve an X API request slot'), {
                         code: result.code || 'NETWORK_ERROR',
-                        retryAfter: result.retryAfter || null
+                        retryAfter: result.retryAfter || null,
+                        deferred: result.deferred === true
                     }));
                     return;
                 }
@@ -452,6 +453,7 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
                 throw Object.assign(new Error('Account changed before lookup'), { code: 'CANCELLED' });
             }
             const fullMetadata = request.fullMetadata === true;
+            const priority = request.priority === true;
             const key = `${viewer || ''}:${generation}:${screenName.toLowerCase()}:${fullMetadata ? 'full' : 'basic'}`;
             if (!pendingLookups.has(key)) {
                 const pending = lookupQueue.add(async signal => {
@@ -464,7 +466,7 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
                     }
                     const variables = encodeURIComponent(JSON.stringify({ screenName }));
                     const url = `/i/api/graphql/${ABOUT_QUERY_ID}/AboutAccountQuery?variables=${variables}`;
-                    await waitForSharedRateLimitSlot(signal, fullMetadata);
+                    await waitForSharedRateLimitSlot(signal, priority);
                     const response = await fetch(url, {
                         headers: { ...headers, 'accept-language': 'en-US,en;q=0.9' },
                         method: 'GET', credentials: 'include', signal
@@ -495,7 +497,7 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
                         throw Object.assign(new Error('Account changed during lookup'), { code: 'CANCELLED' });
                     }
                     return parseAccountResponse(body, screenName, { fullMetadata });
-                }, { priority: fullMetadata }).finally(() => { pendingLookups.delete(key); });
+                }, { priority }).finally(() => { pendingLookups.delete(key); });
                 pendingLookups.set(key, pending);
             }
             const data = await pendingLookups.get(key);
@@ -511,7 +513,8 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
             window.dispatchEvent(new CustomEvent(EVENT_FETCH_USER_INFO_RESULT, {
                 detail: JSON.stringify({
                     id, success: false, error: error?.message || String(error),
-                    code: error?.code || 'NETWORK_ERROR', retryAfter: error?.retryAfter || null
+                    code: error?.code || 'NETWORK_ERROR', retryAfter: error?.retryAfter || null,
+                    deferred: error?.deferred === true
                 })
             }));
         }
