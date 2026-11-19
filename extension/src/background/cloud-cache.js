@@ -786,7 +786,7 @@ class CloudCacheClient {
         const requestedSet = new Set(usernames);
         for (const returnedUser of results.keys()) {
             if (!requestedSet.has(returnedUser)) {
-                console.warn(`☁️ X-Posed: cloud /lookup returned an UNREQUESTED user "${returnedUser}". Possible server-side mapping bug (issue #23).`);
+                console.warn(`☁️ X Account Insight: cloud /lookup returned an UNREQUESTED user "${returnedUser}". Possible server-side mapping bug (issue #23).`);
             }
         }
 

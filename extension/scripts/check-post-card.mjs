@@ -287,7 +287,7 @@ await check('The signature uses the actual logo and keeps provenance after the f
     const canvas = await createPostCardCanvas(fixture());
     const text = drawn(canvas);
     const source = text.find(operation => operation.text.includes('/status/'));
-    const signature = text.find(operation => operation.text === 'X-Posed');
+    const signature = text.find(operation => operation.text === 'X Account Insight');
     const capture = text.find(operation => operation.text.startsWith('Captured '));
     assert.ok(source && signature && capture);
     assert.ok(signature.y > source.y && capture.y > source.y);

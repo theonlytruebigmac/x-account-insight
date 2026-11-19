@@ -1,5 +1,5 @@
 /**
- * Rollup Configuration for X-Posed Extension
+ * Rollup Configuration for X Account Insight
  * Builds both Chrome (MV3) and Firefox compatible versions
  *
  * VERSION MANAGEMENT:
@@ -26,7 +26,7 @@ const manifestFile = isFirefox ? 'src/manifest.firefox.json' : 'src/manifest.chr
 const pkg = JSON.parse(readFileSync('package.json', 'utf-8'));
 const VERSION = pkg.version;
 
-console.log(`🚀 Building X-Posed v${VERSION} for ${browser}...`);
+console.log(`🚀 Building X Account Insight v${VERSION} for ${browser}...`);
 
 // Version replacement plugin - injects VERSION into all bundles
 const versionReplace = replace({

@@ -136,6 +136,13 @@ const browserAPI = (() => {
                     });
                 }
             },
+            alarms: chrome.alarms ? {
+                create: (name, alarmInfo) => chrome.alarms.create(name, alarmInfo),
+                clear: name => new Promise(resolve => {
+                    chrome.alarms.clear(name, wasCleared => resolve(wasCleared));
+                }),
+                onAlarm: chrome.alarms.onAlarm
+            } : undefined,
             commands: chrome.commands ? {
                 onCommand: chrome.commands.onCommand,
                 getAll: () => new Promise((resolve, reject) => {
@@ -195,6 +202,11 @@ const browserAPI = (() => {
         commands: {
             onCommand: { addListener: () => {} },
             getAll: () => Promise.resolve([])
+        },
+        alarms: {
+            create: () => {},
+            clear: () => Promise.resolve(false),
+            onAlarm: { addListener: () => {} }
         }
     };
 })();

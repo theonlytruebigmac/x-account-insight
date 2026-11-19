@@ -115,7 +115,7 @@ export function renderDisplayName(target, value, presentation = null) {
         const asset = emojiAsset(token.src);
         if (asset && copy === token.text) {
             const image = document.createElement('img');
-            image.className = 'x-posed-name-emoji';
+            image.className = 'xai-name-emoji';
             image.alt = copy;
             image.draggable = false;
             image.referrerPolicy = 'no-referrer';

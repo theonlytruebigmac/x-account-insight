@@ -1,5 +1,5 @@
 /**
- * Country/area memberships for X-Posed's existing 16 region filters.
+ * Country/area memberships for X Account Insight's existing 16 region filters.
  *
  * These are transparent filter groupings, NOT an assertion that X uses identical
  * boundaries. Base geography: United Nations M49, checked 2026-10-05:

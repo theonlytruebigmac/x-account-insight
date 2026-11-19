@@ -394,7 +394,7 @@ export function createBadge(element, screenName, info, isUserCell, settings, deb
                 hovercard.hide();
                 captureEvidence(tweet, getInfo(), screenName, element);
             } else {
-                console.warn('X-Posed: Could not find tweet to capture');
+                console.warn('X Account Insight: Could not find tweet to capture');
             }
         });
     }
@@ -741,7 +741,7 @@ export function cleanupUI() {
         try {
             cleanupFn();
         } catch (error) {
-            console.error(`X-Posed: UI cleanup error for ${key}:`, error);
+            console.error(`X Account Insight: UI cleanup error for ${key}:`, error);
         }
     }
     cleanupRegistry.clear();

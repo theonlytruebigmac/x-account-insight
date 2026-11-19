@@ -17,6 +17,7 @@ import { apiClient, API_ERROR_CODES } from './api-client.js';
 import { calculateStatistics } from '../shared/utils.js';
 import cloudCache from './cloud-cache.js';
 import { filterStatistics } from './filter-statistics.js';
+import updateCheck from './update-check.js';
 import { ProfileStore } from './profile-store.js';
 import { PROFILE_MESSAGES, PROFILE_SETTING_KEYS, profileSettings } from '../shared/profiles.js';
 
@@ -45,11 +46,14 @@ async function initialize() {
     // Startup messages and a keyboard command can arrive together. Loading twice
     // could replace a freshly committed setting with an earlier storage snapshot.
     initializationPromise = (async () => {
-        console.log(`🚀 X-Posed v${VERSION} Background Worker starting...`);
+        console.log(`🚀 X Account Insight v${VERSION} Background Worker starting...`);
         try {
             await initializeStorage();
             await profileStore.load();
             await cloudCache.init();
+
+            updateCheck.init();
+            updateCheck.checkNow().catch(error => console.warn('Update check failed:', error.message));
 
             const storedHeaders = headersStorage.get();
             if (storedHeaders) apiClient.setHeaders(storedHeaders);
@@ -193,7 +197,13 @@ async function handleMessage(message, _sender) {
             
             case MESSAGE_TYPES.IMPORT_DATA:
                 return await handleImportData(payload);
-            
+
+            case MESSAGE_TYPES.CHECK_FOR_UPDATE:
+                return { success: true, data: await updateCheck.checkNow() };
+
+            case MESSAGE_TYPES.GET_UPDATE_STATUS:
+                return { success: true, data: await updateCheck.getStatus() };
+
             default:
                 console.warn('Unknown message type:', type);
                 return { success: false, error: 'Unknown message type' };

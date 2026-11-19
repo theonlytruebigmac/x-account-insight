@@ -52,13 +52,13 @@ export function createQuickFilterControl({
     let feedbackTone = '';
     let feedbackKey = null;
     const watched = new WeakSet();
-    const container = element('div', 'x-posed-quick-controls x-posed-footer-section');
-    const heading = element('div', 'x-posed-footer-section-heading', 'Hide');
-    heading.id = `x-posed-quick-filters-heading-${++quickFilterSequence}`;
+    const container = element('div', 'xai-quick-controls xai-footer-section');
+    const heading = element('div', 'xai-footer-section-heading', 'Hide');
+    heading.id = `xai-quick-filters-heading-${++quickFilterSequence}`;
     container.setAttribute('role', 'group');
     container.setAttribute('aria-labelledby', heading.id);
-    const group = element('div', 'x-posed-quick-filters x-posed-footer-section-controls');
-    const status = element('div', 'x-posed-quick-filter-status');
+    const group = element('div', 'xai-quick-filters xai-footer-section-controls');
+    const status = element('div', 'xai-quick-filter-status');
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
     status.hidden = true;
@@ -243,17 +243,17 @@ export function createQuickFilterControl({
     }
 
     for (const kind of ['location', 'account']) {
-        const button = element('button', 'x-posed-quick-filter x-posed-card-action');
+        const button = element('button', 'xai-quick-filter xai-card-action');
         button.type = 'button';
         button.dataset.action = kind;
-        const icon = element('span', 'x-posed-quick-filter-icon');
+        const icon = element('span', 'xai-quick-filter-icon');
         icon.setAttribute('aria-hidden', 'true');
-        const text = element('span', 'x-posed-card-action-label');
-        const check = element('span', 'x-posed-card-action-check');
+        const text = element('span', 'xai-card-action-label');
+        const check = element('span', 'xai-card-action-check');
         check.setAttribute('aria-hidden', 'true');
         check.appendChild(dialogIcon('check', 10));
         check.hidden = true;
-        const coverage = element('span', 'x-posed-card-action-coverage');
+        const coverage = element('span', 'xai-card-action-coverage');
         coverage.setAttribute('aria-hidden', 'true');
         coverage.hidden = true;
         button.append(icon, text, check, coverage);

@@ -1,261 +1,97 @@
-<p align="center">
-  <img src="extension/icons/logo.svg" width="64" height="64" alt="X-Posed logo">
-</p>
+# X Account Insight
 
-<h1 align="center">X-Posed</h1>
+A free, open-source browser extension for X (Twitter) that surfaces the data already sitting behind X's **About this account** page — country/region, connection type, account age, affiliation — as a small badge next to every name in your timeline, plus local filtering, stats and sharing tools built on top of it.
 
-<p align="center">
-  <strong>Context for every account on X.</strong><br>
-  See where X says an account is based, how it connects and when X isn't sure, right next to its name.<br>
-  Open a badge for the full account card, or hide whole countries and regions from your feed.
-</p>
+No account, no login, no tracking, no ads. Everything runs in your browser against your own signed-in session.
 
-<p align="center">
-  <a href="https://chromewebstore.google.com/detail/x-posed-account-location/oodhljjldjdhcdopjpmfgbaoibpancfk"><img src="https://img.shields.io/badge/Chrome-Install-1a73e8?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Install for Chrome from the Chrome Web Store"></a>
-  <a href="https://chromewebstore.google.com/detail/x-posed-account-location/oodhljjldjdhcdopjpmfgbaoibpancfk"><img src="https://img.shields.io/badge/Brave-Install-c84418?style=for-the-badge&logo=brave&logoColor=white" alt="Install for Brave from the Chrome Web Store"></a>
-  <a href="https://chromewebstore.google.com/detail/x-posed-account-location/oodhljjldjdhcdopjpmfgbaoibpancfk"><img src="assets/browser-badges/edge.svg" alt="Install for Edge from the Chrome Web Store"></a>
-  <a href="https://chromewebstore.google.com/detail/x-posed-account-location/oodhljjldjdhcdopjpmfgbaoibpancfk"><img src="https://img.shields.io/badge/Opera-Install-cc0f16?style=for-the-badge&logo=opera&logoColor=white" alt="Install for Opera from the Chrome Web Store"></a>
-  <a href="https://chromewebstore.google.com/detail/x-posed-account-location/oodhljjldjdhcdopjpmfgbaoibpancfk"><img src="https://img.shields.io/badge/Vivaldi-Install-ef3939?style=for-the-badge&logo=vivaldi&logoColor=white" alt="Install for Vivaldi from the Chrome Web Store"></a>
-  <a href="https://addons.mozilla.org/en-GB/firefox/addon/x-posed-account-location-devic/"><img src="https://img.shields.io/badge/Firefox-Install-6033b1?style=for-the-badge&logo=firefoxbrowser&logoColor=white" alt="Install for Firefox from Firefox Add-ons"></a>
-  <a href="https://addons.mozilla.org/en-GB/firefox/addon/x-posed-account-location-devic/"><img src="https://img.shields.io/badge/Firefox_for_Android-Install-6033b1?style=for-the-badge&logo=firefoxbrowser&logoColor=white" alt="Install for Firefox for Android from Firefox Add-ons"></a>
-</p>
+**What it reports is X's own account-level label, not a person's live location or the device behind one specific post.** Treat an "inaccurate location" warning as uncertainty, not proof of a VPN.
 
-<p align="center">
-  <a href="CHANGELOG.md">Version 4.4</a> ·
-  <a href="#install">Install</a> ·
-  <a href="#what-the-badge-shows">Badges</a> ·
-  <a href="#account-cards">Account cards</a> ·
-  <a href="#filters">Filters</a> ·
-  <a href="PRIVACY.md">Privacy</a> ·
-  <a href="#support">Support</a>
-</p>
+Jump to: [Badges](#badges) · [Account card](#account-card) · [Filters](#filters) · [Stats & sharing](#stats--sharing) · [Privacy](#privacy) · [Running it](#running-it) · [Contributing](#contributing)
 
-![X-Posed 4.3 showing an inline country and device badge beside an account card with a profile picture, quick filters, and Copy and Save controls](screenshots/v4.3/account-card.png)
+## Badges
 
-*Account context and quick filters in action. Screenshot from X-Posed 4.3.*
+A small flag/connection/warning cluster appears next to usernames across your timeline, replies, quoted posts, profiles, people lists (Followers/Following), and identifiable 1:1 Chat threads. Size, background and placement are configurable under **Settings → Display**; badges follow X's own light/dark theme.
 
-X-Posed is a free, open-source browser extension. It brings the information from X's **About this account** page into your timeline, with filters, local statistics and sharing tools. There is no account to create, no tracking and no ads.
+- **Flag** — the country or regional label X assigns (250+ countries/territories, 16 region groupings).
+- **App-store / globe icon** — whether the account connects via iOS, Android, or the web.
+- **Amber shield** — X itself flags the location as possibly unreliable.
+- **Share icon** — exports the post, with its context, as an image.
+- **Info icon** — opens the full account card.
 
-**It shows what X reports, not a person's live location or the device used for a particular post.** Missing data stays unknown, and a location warning is not proof of VPN use.
+## Account card
 
-## Install
-
-| Browser | Get it | Needs |
-| --- | --- | --- |
-| Chrome, Edge, Brave, Opera, Vivaldi and other Chromium browsers | [Chrome Web Store](https://chromewebstore.google.com/detail/x-posed-account-location/oodhljjldjdhcdopjpmfgbaoibpancfk) | Version 111 or newer |
-| Firefox, and Firefox-based browsers such as Zen and LibreWolf | [Firefox Add-ons](https://addons.mozilla.org/en-GB/firefox/addon/x-posed-account-location-devic/) | Firefox 140 or newer |
-| Firefox for Android | [Firefox Add-ons](https://addons.mozilla.org/en-GB/firefox/addon/x-posed-account-location-devic/) | Firefox for Android 142 or newer |
-
-Install it, reload X and browse while signed in. Badges appear as you scroll. To set up your feed, choose **Manage filters** in the extension popup.
-
-This README describes source version 4.4.0; store updates roll out separately. To run your own build, see [Build from source](#build-from-source).
-
-**iPhone and iPad:** the separate [X-Posed Location](https://apps.apple.com/us/app/x-posed-location/id6755918713) app looks up usernames. It isn't the browser extension and doesn't change your timeline.
-
-## What the badge shows
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="screenshots/v4.3/badge-dark.webp">
-    <img src="screenshots/v4.3/badge-light.webp" width="460" alt="The X-Posed badge, enlarged: a Swiss flag, an Apple icon, an amber shield, a share icon and an info icon">
-  </picture>
-</p>
-
-| Part | What it means |
-| --- | --- |
-| Flag | The country or region X reports: 250+ countries and territories, plus 16 regional labels such as Europe or South Asia |
-| Apple, Android or globe | The account connects through the App Store, Google Play or the web |
-| Amber shield | X marks the location as possibly inaccurate |
-| Share | Turns the post into an image with its context |
-| Info | Opens the account card |
-
-Badges appear wherever names do: in your timeline, replies and quoted posts, on profiles, and in lists like Followers and Following. They follow X's light or dark theme, come in three sizes, and can drop their background for icons only. Preview your choice in **Settings → Display**.
-
-They also appear in identifiable one-to-one **Chat** headers, inbox rows and message requests. Open the badge for the same account card. If X hasn't provided a reliable account identity, the sender stays unmarked.
-
-## Account cards
-
-Hover, click or tap a badge to see what X's **About this account** page knows, without leaving your feed:
-
-- **Location and connection**: the country or region X reports, and whether the account uses an app store or the web.
-- **Activity**: followers, following, posts and media, from the profile data X already loaded.
-- **Account history**: when it was created and verified, and how often the handle changed.
-- **Verification and affiliation**: blue, gold or grey checkmarks, and the organization an account belongs to.
-- **A link that lasts**: copy an ID-based profile link that keeps working after handle changes.
-- **One-click actions**: filter the account or its country, keep it visible with **Always Show**, or copy and save the card as an image.
+Click or hover a badge for everything X's about-page exposes, without leaving your feed: reported location and connection, follower/following/post/media counts, account creation date and handle-change history, verification tier and organizational affiliation, and a permanent ID-based profile link that survives handle changes. From the card you can also filter the account or its country, pin it to Always Show, or save/copy it as an image.
 
 ## Filters
 
-Choose what to match, then **Hide** matching posts or **Highlight** them with an amber edge. Filters only change what you see. Nobody is blocked, muted or notified on X. Changes apply at once, including to posts already on the page.
+Match on country/region, specific accounts (by permanent ID), display name or bio text, linked domains/URLs, account labels (Parody, Commentary, Government, etc.), organization affiliation, post language, follower/following counts, digit-heavy handles, or location-accuracy warnings. Matches can **Hide** a post outright or **Highlight** it with an amber border — nothing is muted, blocked, or reported to X, and changes apply instantly to posts already rendered.
 
-Open the editor from **Manage filters** in the popup, **Settings → Blocking**, or the **Blocking** link X-Posed can add to X's sidebar.
+Multiple named filter profiles are supported (work/personal/etc.), switchable per X account from the popup or **Settings → Blocking**. **Always Show** overrides any filter for accounts you pick, your own account, and optionally everyone you follow.
 
-### Keep different filter profiles
+Full matching semantics — how region/country overlap, follow-status exemptions, quoted-post handling, language detection limits, and domain/URL exact-match rules work — are documented in the extension's **Settings → Blocking** help text and tooltips, since the mechanics are easiest to understand while looking at the actual controls.
 
-Save named setups for work, personal browsing or anything else. Create, rename or delete them in **Settings → Blocking**. Switch there or under **More controls → Filtering preferences → Filter profile** in the popup; open controls stay in sync.
+## Stats & sharing
 
-Each X account remembers its choice, and any account can use any saved profile. Changes save to the selected profile. Your existing filters become **Default**; appearance preferences and the account cache stay shared.
+**Statistics** tallies filtered posts (deduplicated, hidden and highlighted combined) by country, region and device, plus a separate map of everything cached locally — all computed client-side from data already in your browser. **Share** renders a post into an image card with its text, photos, and the account context above, ready to quote/reply/post yourself or just save; nothing is posted automatically.
 
-### Block whole countries and regions
+Local account data caps at 50,000 entries / 60 days and can be cleared or exported from **Data & Cache** in Settings.
 
-This is where most people start. Pick any of 250+ countries and territories, or one of the 16 regions X reports, such as South Asia or Africa. A region filter matches X's label, and you decide whether it also covers all, some or none of the countries inside it.
+## Privacy
 
-Turn on **Use device country** to go by the app store an account connects through, not only the location it shows. X's location warnings can count as a match too.
+- No telemetry, no analytics, no ads, no account for this extension itself.
+- X session headers (auth/CSRF) stay local and are only ever sent to X.
+- An optional, opt-out **community cache** shares looked-up public handles/metadata (not post text, bios, DMs, or session headers) across users who enable it — see [PRIVACY.md](PRIVACY.md) for exactly what that includes.
+- Everything else X exposes on its own timeline responses stays in page-session memory and can be disabled under **Blocking → Behavior → Use profile details**.
+- X's own labels (and anything shared via the community cache) can be stale, incomplete, or wrong — don't treat a badge as a verified fact.
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="screenshots/v4.3/region-countries.webp">
-    <img src="screenshots/v4.3/region-countries-light.webp" width="720" alt="The Regions filter with South Asia expanded: Include countries switched on and all nine countries ticked, from Afghanistan to Sri Lanka">
-  </picture>
-</p>
+Full details, including data retention and permissions, are in [PRIVACY.md](PRIVACY.md). This project is independent and not affiliated with, endorsed by, or supported by X Corp.
 
-### What you can match
+## Running it
 
-| Filter | Matches |
-| --- | --- |
-| Countries and X regions | The account's reported country or regional label, or the connection's country if you choose |
-| Accounts | Specific accounts by permanent user ID, so handle changes don't matter |
-| Display name and bio text | Words or phrases, case-insensitive; display-name rules also take emoji |
-| Domains and URLs | Profile websites and bio links: a whole domain, including subdomains, or one exact URL |
-| Account labels | Parody, Commentary, Fan, or the account's grey government or multilateral checkmark |
-| Organization affiliation | An organization name or handle |
-| Post language | The language X assigns to the post text |
-| Activity & names | Minimum Following or Total posts, plus digits in handles and display names |
-| Location warnings | Accounts whose location X marks as possibly inaccurate |
+This project isn't published to any browser store. The easiest way to get a working copy without a Node toolchain is the **[Releases page](https://github.com/theonlytruebigmac/x-account-insight/releases)** — every tagged release has pre-built `x-account-insight-chrome-vX.Y.Z.zip` and `x-account-insight-firefox-vX.Y.Z.zip` assets, built automatically by CI:
 
-**Always Show** keeps the accounts you choose visible, and an option exempts everyone you follow.
+- **Chrome/Chromium**: download and unzip the `-chrome-` asset, then `chrome://extensions` → enable Developer mode → **Load unpacked** → select the unzipped folder. Chrome has no self-hosted auto-update mechanism for sideloaded extensions, so check the Releases page (or the in-extension "Check for updates" notice) for new versions yourself.
+- **Firefox**: if a signed `-firefox-vX.Y.Z.xpi` asset is attached to the release, just open/drag it into Firefox to install it permanently — and because the manifest points at a self-hosted update manifest, Firefox will **auto-update it** on future releases, same as a store install. If only the `.zip` is present (no `.xpi`), the maintainer hasn't configured AMO signing yet: use `about:debugging` → **This Firefox** → **Load Temporary Add-on** → select the zip directly. That's a temporary install cleared on restart, with no auto-update.
 
-### Recipes
-
-| Goal | Rules |
-| --- | --- |
-| A whole region | Region: South Asia, with all 9 countries |
-| Crypto spam | Bio: `airdrop`, `giveaway` · Domain: `t.me` |
-| Engagement bait | Display name: 🚨 · Bio: `follow for follow` · Following: 5,000 or more |
-| Throwaway accounts | Handle digits: 5 or more, in Highlight mode |
-| Friends stay visible | Always Show: accounts I follow |
-
-<details>
-<summary><strong>How matching works</strong></summary>
-
-<br>
-
-A match on any applicable rule is enough.
-
-- **Regions can include countries.** Expand a region under **Add filter → Regions** to browse its flags. Choose individual countries, or enable **Include countries** to select them all; either action automatically enables the region. Customize the list with individual checkboxes or **All / None**. Existing filters stay label-only until you opt in. Regions can overlap, so excluding a country in one does not override another matching filter. Membership follows [UN M49 geography](https://unstats.un.org/unsd/methodology/m49/) with documented composite groups, not a claim about X's boundaries. Antarctica remains country-only.
-- **Choose the location source.** Enable **Behavior → Use device country when available** to use a country from the connection-source label, falling back to the account location. This affects both flags and country/region filters.
-- **Always Show takes priority.** Exempt accounts from its tab or their account card. Your own recognized account is exempt too. New installs include `@xaitax` in Always Show; removing it is respected.
-- **Accounts you follow can be exempt too.** Enable **Always Show → Always show accounts I follow**, off by default. It applies as X loads follow status; already-loaded accounts may need a refresh or further browsing. Confirmed followed accounts bypass filters, while unknown status uses normal filtering. No extra requests are made, and **Use profile details** can remain off. Follow status stays in page-session memory, is cleared when the signed-in account changes, and is never uploaded or backed up. Only the preference is included in backups. Quoted authors are checked independently.
-- **Quotes keep their own rules by default.** A matching quoted account can collapse independently, with a **Show quoted post** control and the matching reasons. Language and location-warning filters apply to the enclosing post, not independently to its quoted author.
-- **Hide related posts, optionally.** Enable **Behavior → Hide replies and quotes of filtered posts** to collapse whole replies and quotes, even when their source is only highlighted. Each gets a reason and **Show post** control. This uses relationships X already loads, without extra requests. Unknown sources keep normal filtering, and existing exceptions still apply. Authors are not added to your filters.
-- **Opened posts respect explicit account filters.** Broad filters highlight a deliberately opened main post rather than hiding it, but a direct account filter still hides it in Hide mode. Replies retain their normal rules. Posts you explicitly reveal stay readable, and matching accounts in people lists are highlighted, never removed.
-- **Missing information is not guessed.** Language filtering uses X's displayed-text language marker; auto-translation can make the original language unavailable. Unknown languages are not filtered, and government status requires the account's own grey checkmark.
-
-**Domains and exact URLs.** Under **Add filter → Domains & URLs**, `example.com` matches that site and its subdomains. `example.com/channel` becomes an exact rule for `https://example.com/channel`, not the whole site. An explicit HTTP(S) URL, query or fragment also creates an exact rule. Exact rules preserve the hostname, scheme, path case, trailing slash, query and fragment after standard URL parsing. They do not include child pages. Redirects and short links are not followed; unavailable destinations stay unknown. Bio-text and link filters each have a default-off option to also check self-written **profile location text**, which is separate from X's account-country label.
-
-**Activity & names.** Following and Total posts use counts X already loads, with presets and custom minimums; **5,000 or more** includes exactly 5,000, and unknown counts do not match. Following means accounts followed, not followers. **Handle digits** counts all digits in the actual `@handle` (suggested minimum 5, adjustable from 1 to 15): `@alex1990` has four digits, `@a1b2c3d4e5` has five. **Display-name digits** is a separate rule (suggested 5, adjustable from 1 to 50) that counts decimal digits, including styled and non-Latin digits. Digits in a name and handle are never added together. Turning off **Behavior → Use profile details** leaves the two activity rules saved but inactive; the digit rules keep working.
-
-**Location warnings and keyboard shortcut.** Enable **Behavior → Filter accounts with location warnings** to include them in Hide/Highlight. A warning indicates uncertainty, not confirmed VPN use. You can assign **Switch matching posts between Hide and Highlight** in your browser's extension-shortcut settings; no shortcut is assigned by default.
-
-</details>
-
-## Statistics and sharing
-
-**Statistics** count each post your filters catch once, whether hidden or highlighted, and map them by country, region and device. A second view maps the accounts your browser has cached. Everything is worked out locally from data already in your browser, and nothing is uploaded.
-
-**Share** turns a post into a polished card with its text, photos and account context: the location X reports, the connection, any location warning, the link and the capture time. Review the preview and caption, then choose Quote, Reply or New post, or save the card. Nothing is posted for you.
-
-<details>
-<summary><strong>Statistics and data controls</strong></summary>
-
-<br>
-
-**Statistics → Filtering** counts identifiable matching posts once across tabs and browser restarts. Counting starts as you browse, with no history backfill. Quotes need their own reliable post ID; a quote removed with its hidden parent is not counted separately. These are cumulative totals, not a live timeline count or per-rule counters. **Cached accounts** is a separate view of your browser's account cache, not the community cache. Small countries missing from the map remain in the lists.
-
-| Control | What it does |
-| --- | --- |
-| Statistics → Filtering → Reset counts | Removes filtering totals and deduplication fingerprints, without changing filters or cached accounts |
-| Data & Cache → Clear Cache | Clears locally cached account details, not community records or filtering statistics |
-| Data & Cache → Export Data | Backs up every profile and its filters, saved account selections, settings, Always Show accounts, theme, community-cache preference and local cached accounts, but not X headers or statistics |
-| Data & Cache → Import Data | Restores the complete profile collection from a full backup. Older backups update only supplied fields in the selected profile. Outdated or invalid cached accounts are skipped without replacing newer observations |
-
-The local account cache holds up to 50,000 accounts for up to 60 days. Downloading a shared record preserves its remaining lifetime rather than making it fresh again. Treat exported files as private.
-
-The share image includes the post's available text, up to four attached photos without cropping, metrics and account information, plus separate post and capture times, original URL and extension version. It is not a full thread or video archive. Desktop browsers copy the image and open X's composer; paste the image if needed. Supported mobile browsers can use their share sheet.
-
-</details>
-
-## Screenshots
-
-Real screenshots of X-Posed 4.3. Filter screens use example settings.
-
-<table>
-  <tr>
-    <td width="50%" valign="top"><img src="screenshots/v4.3/filters-dialog.webp" alt="The Blocking dialog on X with a Hide or Highlight switch and ten filter types"><br><strong>The filter editor, right on X</strong><br>Ten filter types, one Hide or Highlight switch.</td>
-    <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="screenshots/v4.3/saved-filters.webp"><img src="screenshots/v4.3/saved-filters-light.webp" alt="Saved filters in Settings: a region with its countries, display-name, bio, domain, account-label and handle-digit rules"></picture><br><strong>Saved filters</strong><br>Search, edit and remove your rules.</td>
-  </tr>
-  <tr>
-    <td valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="screenshots/v4.3/statistics.webp"><img src="screenshots/v4.3/statistics-light.webp" alt="Statistics with a world map of cached accounts and counts by country"></picture><br><strong>Statistics</strong><br>Local counts and maps, without extra lookups.</td>
-    <td valign="top"><img src="screenshots/v4.3/share-dialog.webp" alt="The share dialog with an image preview, an editable caption, and Quote, Reply or New post"><br><strong>Share</strong><br>Preview the image and caption, then post it yourself.</td>
-  </tr>
-</table>
-
-## Privacy and accuracy
-
-- No X-Posed account, usage analytics or advertising. Filtering statistics remain in your browser.
-- The extension uses your existing X session. Captured authorization and CSRF headers are stored locally and sent only to X, never to the community cache.
-- The community cache is **enabled on new installs** and can be turned off under **Settings → Cloud Cache**. It shares public handles, account metadata and when that data was observed, not post text, biographies, private messages or session headers. These records are identifiable, not anonymous.
-- Profile text, links, labels and counts read from X's existing timeline responses stay in page-session memory. Turn this off under **Blocking → Behavior → Use profile details**.
-- X's labels and shared cache records can be incomplete, stale or incorrect. Check important findings against X. Rate-limit handling cannot guarantee protection from X's account enforcement.
-
-Read the [privacy policy](PRIVACY.md) for data flows, permissions and retention. X-Posed is independent and is not affiliated with or endorsed by X Corp.
-
-## Support
-
-X-Posed is free and open source. **A huge thank you to everyone who has donated.** Your support helps cover development and the community cache. There is no need to donate, but it helps tremendously.
-
-**[Buy me a coffee on Ko-fi](https://ko-fi.com/M4M61EP5XL)** or donate **BTC, ETH or USDC**. Copy the addresses in **Settings → About** or below.
-
-**Bitcoin (BTC) · Network: Bitcoin**
-
-```text
-35r5XS95AuvNcLqw13ULwH8XifQD9WxddX
-```
-
-**Ethereum (ETH) and USD Coin (USDC) · Network: Ethereum / ERC-20**
-
-```text
-0xDeB8e90373C121EcCB9693f8Ff2D4f39ea55f5c0
-```
-
-Check the network before sending. Send BTC on Bitcoin, and ETH or USDC on Ethereum only. ETH and USDC intentionally share the same receiving address.
-
-## Build from source
-
-Use Node.js 18 or newer and npm.
+To build from source instead (needed for `dev:*` watch mode or if you want to modify the code):
 
 ```bash
-git clone https://github.com/xaitax/x-account-location-device.git
-cd x-account-location-device/extension
+git clone https://github.com/theonlytruebigmac/x-account-insight.git
+cd x-account-insight/extension
 npm ci
 npm run lint
 npm run build
 npm run check:build
 ```
 
-- **Chrome:** open `chrome://extensions`, enable Developer mode, select **Load unpacked**, and choose `extension/dist/chrome`.
-- **Firefox:** open `about:debugging`, choose **This Firefox → Load Temporary Add-on**, and select `extension/dist/firefox/manifest.json`. This development installation is temporary.
+Then load the unpacked build:
 
-Reload the extension and refresh open X tabs after rebuilding. Use `npm run dev:chrome` or `npm run dev:firefox` for watch mode, and `npm run package` to create both store-upload ZIPs in `extension/dist/`.
+- **Chrome/Chromium**: `chrome://extensions` → enable Developer mode → **Load unpacked** → select `extension/dist/chrome`.
+- **Firefox**: `about:debugging` → **This Firefox** → **Load Temporary Add-on** → select `extension/dist/firefox/manifest.json` (temporary install, cleared on restart).
 
-The browser extension lives in `extension/src/`, grouped into content scripts, background services, shared modules, settings, popup and styles. The older `userscript/` is not feature-equivalent to the extension.
+`npm run dev:chrome` / `npm run dev:firefox` watch and rebuild automatically; `npm run package` produces both store-format ZIPs under `extension/dist/`. Reload the extension and refresh any open X tabs after rebuilding.
 
-## Contribute
+Source lives under `extension/src/` (content scripts, background service, shared modules, settings/popup UI, styles). `userscript/` is an older, non-feature-equivalent variant kept for reference.
 
-[Report a bug or suggest a feature](https://github.com/xaitax/x-account-location-device/issues). Include browser and extension versions and steps to reproduce. Never include cookies, authentication headers, private account data or unredacted network logs.
+<details>
+<summary><strong>Maintainers: enabling signed, auto-updating Firefox releases</strong></summary>
 
-For code contributions, keep changes focused, preserve existing preferences and reuse the shared filtering and settings modules. Run the checks above and verify Chrome and Firefox. UI changes should cover light and dark themes; filter changes should cover Hide and Highlight, Always Show, quoted and opened posts, and cross-tab settings updates.
+<br>
 
-Thank you to everyone who contributes code, reports bugs, shares ideas, tests releases or supports development. Release-specific credits are in the [changelog](CHANGELOG.md).
+By default the release workflow only produces unsigned `.zip` files for both browsers — Chrome has no cheaper alternative, but Firefox can do better for free. Create a (free) Firefox Add-on Developer account, generate API credentials under **[Manage API Keys](https://addons.mozilla.org/developers/addon/api/key/)**, and add them as repository secrets named `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` (Settings → Secrets and variables → Actions).
 
-Built by [Alexander Hagenah](https://primepage.de) · [@xaitax](https://x.com/xaitax) · [MIT License](https://spdx.org/licenses/MIT.html)
+Once both secrets exist, every tagged release will additionally: sign the Firefox build via `web-ext sign --channel=unlisted` (no public AMO listing — just a signature Firefox trusts), attach the signed `.xpi` to the GitHub Release, and commit an updated `updates.json` to `main` that `manifest.firefox.json`'s `update_url` points at. From then on, anyone who installed that `.xpi` gets real, silent auto-updates — no in-extension banner needed for Firefox. Until those secrets are set, this step is a complete no-op and the release pipeline behaves exactly as before.
+
+</details>
+
+## Contributing
+
+Open an [issue](https://github.com/theonlytruebigmac/x-account-insight/issues) for bugs or feature requests — include browser/extension version and repro steps, and never paste cookies, auth headers, or unredacted account/network data.
+
+For PRs: keep changes scoped, reuse the existing filtering/settings modules rather than adding new ones, run the `npm run check:*` scripts relevant to what you touched, and verify both Chrome and Firefox. UI changes need both themes checked; filter changes need Hide/Highlight, Always Show, and quoted/opened-post behavior checked.
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
+
+## License
+
+MIT — see [LICENSE](LICENSE). This project started as a fork of [x-account-location-device](https://github.com/xaitax/x-account-location-device) ("X-Posed") by Alexander Hagenah, also MIT licensed. It has since diverged into an independent codebase and is not affiliated with, supported by, or endorsed by the original author or project.

@@ -66,7 +66,7 @@ class ElementDouble extends EventTargetDouble {
     }
     querySelector(selector) {
         if (selector === '.x-badge-details') return this.details || null;
-        if (selector === '.x-posed-card-close') return this.close || null;
+        if (selector === '.xai-card-close') return this.close || null;
         return null;
     }
     closest(selector) {
@@ -107,7 +107,7 @@ function environment({ touch = false, clickOnly = false } = {}) {
     card.close = new ElementDouble(document);
     card.close.parent = card;
     document.getElementById = () => card;
-    const context = vm.createContext({ window, document, LRUCache, CACHE_CONFIG, Date: ClockDate, CARD_ID: 'x-posed-hovercard',
+    const context = vm.createContext({ window, document, LRUCache, CACHE_CONFIG, Date: ClockDate, CARD_ID: 'xai-hovercard',
         resolveCardAvatar, getProfile: () => null,
         setTimeout: (callback, delay) => {
             const id = nextId++;

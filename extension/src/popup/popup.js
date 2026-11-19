@@ -31,6 +31,7 @@ let settingsFailed = false;
 let settingsRequest = 0;
 let rateStatus = null;
 let rateLimitInterval = null;
+let updateInfo = null;
 let closed = false;
 let statsGeneration = 0;
 let cloudAllowed = false;
@@ -66,6 +67,7 @@ function initialize() {
     void loadStats();
     void loadRateLimitStatus();
     rateLimitInterval = setInterval(loadRateLimitStatus, TIMING.RATE_LIMIT_CHECK_MS);
+    void loadUpdateStatus();
 }
 
 function cleanup() {
@@ -98,7 +100,7 @@ function renderSettings() {
     }
     const state = byId('extension-state');
     state.dataset.state = settingsLoaded ? (enabled ? 'on' : 'off') : (settingsFailed ? 'error' : 'loading');
-    byId('extension-status').textContent = settingsLoaded ? (enabled ? 'X-Posed is on' : 'X-Posed is paused')
+    byId('extension-status').textContent = settingsLoaded ? (enabled ? 'X Account Insight is on' : 'X Account Insight is paused')
         : (settingsFailed ? 'Settings unavailable' : 'Loading settings');
     byId('extension-status-description').textContent = settingsLoaded
         ? (enabled ? 'Your saved preferences apply on X.' : 'Your saved preferences are kept.')
@@ -188,6 +190,10 @@ function handleStorageChange(changes, area) {
     }
     // Opting out elsewhere must also stop this popup displaying a community total.
     if (changes[STORAGE_KEYS.CLOUD_CACHE_ENABLED]) void loadStats();
+    if (changes[STORAGE_KEYS.UPDATE_INFO]?.newValue) {
+        updateInfo = changes[STORAGE_KEYS.UPDATE_INFO].newValue;
+        renderUpdateBanner();
+    }
 }
 
 function applyTheme(theme) {
@@ -278,6 +284,25 @@ function renderRateLimit() {
     byId('rate-limit-time').textContent = minutes > 0
         ? `Try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.`
         : 'Waiting for X to allow requests again.';
+}
+
+async function loadUpdateStatus() {
+    try {
+        const response = await browserAPI.runtime.sendMessage({ type: MESSAGE_TYPES.GET_UPDATE_STATUS });
+        if (closed || !response?.success) return;
+        updateInfo = response.data;
+        renderUpdateBanner();
+    } catch { /* A failed status read just means the banner stays hidden. */ }
+}
+
+function renderUpdateBanner() {
+    const banner = byId('update-banner');
+    banner.hidden = !updateInfo?.updateAvailable;
+    if (banner.hidden) return;
+    banner.href = updateInfo.releaseUrl;
+    byId('update-banner-detail').textContent = updateInfo.latestVersion
+        ? `v${updateInfo.latestVersion} is available — click to download`
+        : 'A newer version is available — click to download';
 }
 
 async function clearLocalCache() {

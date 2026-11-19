@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>X-Posed Settings</title>
+    <title>X Account Insight Settings</title>
     <link rel="stylesheet" href="../styles/graphite-theme.css">
     <link rel="stylesheet" href="../styles/graphite.css">
     <link rel="stylesheet" href="../styles/badges.css">
@@ -16,7 +16,7 @@
         <div class="whats-new-banner" id="whats-new-banner" role="region" aria-labelledby="whats-new-title" style="display: none;">
             <button type="button" class="whats-new-close" id="whats-new-close" aria-label="Dismiss what's new" data-settings-icon="close"></button>
             <div class="whats-new-content">
-                <h2 id="whats-new-title"><span id="release-heading">What's new in X-Posed</span> <span data-release-version>4.4.0</span></h2>
+                <h2 id="whats-new-title"><span id="release-heading">What's new in X Account Insight</span> <span data-release-version>4.4.0</span></h2>
                 <p class="whats-new-subtitle">Switch your filters. Take the context with you.</p>
 
                 <div class="whats-new-features">
@@ -32,7 +32,7 @@
 
                     <section class="whats-new-feature" aria-labelledby="whats-new-chat-title">
                         <h3 id="whats-new-chat-title"><span class="settings-icon" data-settings-icon="messageCircle" aria-hidden="true"></span>Context in your chats.</h3>
-                        <p>Country flags, devices and account cards now come to one-to-one chats. They appear wherever X-Posed can identify the account.</p>
+                        <p>Country flags, devices and account cards now come to one-to-one chats. They appear wherever X Account Insight can identify the account.</p>
                     </section>
                 </div>
 
@@ -46,7 +46,7 @@
             <div class="header-content">
                 <img src="../icons/logo.svg" alt="" class="header-icon" width="56" height="56">
                 <div>
-                    <span class="header-brand">X-Posed</span>
+                    <span class="header-brand">X Account Insight</span>
                     <h1 tabindex="-1">Settings</h1>
                 </div>
             </div>
@@ -98,7 +98,7 @@
             <div class="xp-panel active" id="panel-general">
                 <section class="options-section">
                     <h2 class="section-title"><span class="settings-icon" data-settings-icon="settings" aria-hidden="true"></span>General</h2>
-                    <p class="section-description">The essentials for running X-Posed.</p>
+                    <p class="section-description">The essentials for running X Account Insight.</p>
                     <div class="settings-group">
                         <div class="option-row">
                             <div class="option-info">
@@ -398,7 +398,7 @@
                 </h2>
 
                 <div class="about-info">
-                    <p><strong>X-Posed</strong> v<span id="version">4.4.0</span></p>
+                    <p><strong>X Account Insight</strong> v<span id="version">4.4.0</span></p>
                     <p class="text-muted">See where X users are located and what devices they use.</p>
                     <p class="text-muted">
                         Originally based on
@@ -407,6 +407,20 @@
                         or supported by the original author — please don't file issues or support requests there
                         for anything in this build.
                     </p>
+                </div>
+
+                <div class="about-info">
+                    <p class="text-muted">
+                        Not published to any browser store, so the browser can't auto-update it. This checks the
+                        project's GitHub Releases and links you to the download when a newer version exists.
+                    </p>
+                    <div class="btn-group">
+                        <button class="btn btn-secondary" id="btn-check-update">
+                            <span data-settings-icon="download" aria-hidden="true"></span>
+                            Check for updates
+                        </button>
+                    </div>
+                    <p class="text-muted" id="update-status" role="status"></p>
                 </div>
             </section>
             </div>

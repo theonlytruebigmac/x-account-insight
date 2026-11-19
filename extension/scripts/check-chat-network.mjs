@@ -72,14 +72,14 @@ function harness() {
         }
     }
     window.fetch = (input, init) => new Promise(resolve => nativeRequests.push({ input, init, resolve }));
-    window.addEventListener('x-posed-shadow-root-ready', event => shadowEvents.push(event));
-    for (const type of ['x-posed-chat-users', 'x-posed-profiles', 'x-posed-headers-captured']) {
+    window.addEventListener('xai-shadow-root-ready', event => shadowEvents.push(event));
+    for (const type of ['xai-chat-users', 'xai-profiles', 'xai-headers-captured']) {
         window.addEventListener(type, event => events.push({ type, detail: JSON.parse(event.detail) }));
     }
     vm.runInNewContext(production, { window, document, location: new URL('https://x.com/i/chat/'),
         Response, XMLHttpRequest: XHR, CustomEvent, Headers, URL, console, Element,
         performance, setTimeout, clearTimeout, AbortController, fetch: window.fetch });
-    const setting = (enabled, type = 'x-posed-set-chat') => window.dispatchEvent(new CustomEvent(type, {
+    const setting = (enabled, type = 'xai-set-chat') => window.dispatchEvent(new CustomEvent(type, {
         detail: JSON.stringify({ enabled })
     }));
     const start = (url = endpoint, init) => {
@@ -94,7 +94,7 @@ function harness() {
         return response;
     };
     return { window, document, Response, XHR, Element, shadowCalls, shadowEvents, setting, start, reply, nativeRequests, events,
-        chats: () => events.filter(event => event.type === 'x-posed-chat-users') };
+        chats: () => events.filter(event => event.type === 'xai-chat-users') };
 }
 
 let groups = 0;
@@ -166,7 +166,7 @@ await check('Native fetch captures public IDs independently of disabled profile 
     await h.reply(h.start());
     assert.equal(h.chats().length, 1);
     assert.deepEqual(h.chats()[0].detail, { viewer: 'id:111', users: [{ u: 'example', i: '222' }] });
-    assert.equal(h.events.filter(event => event.type !== 'x-posed-chat-users').length, 0);
+    assert.equal(h.events.filter(event => event.type !== 'xai-chat-users').length, 0);
     assert.equal(h.nativeRequests.length, 1, 'The observer must not request identities itself');
     assert.ok(!JSON.stringify(h.events).includes('DO_NOT_RELAY'));
 });
@@ -178,7 +178,7 @@ await check('Direct Chat native fetch reuses normal init or Request headers with
         const h = harness(); h.setting(true);
         const input = useRequest ? new Request(endpoint, { headers: publicUserHeaders }) : endpoint;
         await h.reply(h.start(input, useRequest ? undefined : { headers: publicUserHeaders }));
-        const captures = h.events.filter(event => event.type === 'x-posed-headers-captured');
+        const captures = h.events.filter(event => event.type === 'xai-headers-captured');
         assert.equal(captures.length, 1);
         assert.deepEqual(captures[0].detail.headers, publicUserHeaders);
         assert.equal(h.nativeRequests.length, 1);
@@ -190,7 +190,7 @@ await check('The native public-user header capture honors effective fetch init o
     const h = harness(); h.setting(true);
     const input = new Request(endpoint, { headers: publicUserHeaders });
     await h.reply(h.start(input, { headers: { authorization: 'incomplete_override' } }));
-    assert.equal(h.events.filter(event => event.type === 'x-posed-headers-captured').length, 0,
+    assert.equal(h.events.filter(event => event.type === 'xai-headers-captured').length, 0,
         'A Request header overridden by init is not a credential used for the request');
 });
 
@@ -209,7 +209,7 @@ await check('Cold Chat header capture requires an enabled, verified GET operatio
         if (scenario.viewer !== undefined) h.document.cookie = scenario.viewer;
         await h.reply(h.start(scenario.url, { method: scenario.method || 'GET',
             headers: scenario.headers || publicUserHeaders }), responseFor(), { url: scenario.url });
-        assert.equal(h.events.filter(event => event.type === 'x-posed-headers-captured').length, 0);
+        assert.equal(h.events.filter(event => event.type === 'xai-headers-captured').length, 0);
     }
 });
 
@@ -220,7 +220,7 @@ await check('XHR reuses normal public-user auth headers but ignores private chat
         const xhr = new h.XHR(); xhr.open('GET', url);
         for (const [name, value] of Object.entries(publicUserHeaders)) xhr.setRequestHeader(name, value);
         xhr.send(); xhr.finish(responseFor());
-        const captures = h.events.filter(event => event.type === 'x-posed-headers-captured');
+        const captures = h.events.filter(event => event.type === 'xai-headers-captured');
         assert.equal(captures.length, allowed ? 1 : 0);
         if (allowed) assert.deepEqual(captures[0].detail.headers, publicUserHeaders);
         assert.ok(!JSON.stringify(h.chats()).includes('FAKE_TEST'));
@@ -237,11 +237,11 @@ await check('JSON tap and fetch fallback together emit each response only once',
 });
 
 await check('Enabling ordinary profile enrichment never routes chat permissions through profile harvesting', async () => {
-    const h = harness(); h.setting(true); h.setting(true, 'x-posed-set-enrichment');
+    const h = harness(); h.setting(true); h.setting(true, 'xai-set-enrichment');
     await h.reply(h.start());
     const xhr = new h.XHR(); xhr.open('GET', endpoint); xhr.send(); xhr.finish(responseFor());
     assert.equal(h.chats().length, 2);
-    assert.equal(h.events.filter(event => event.type !== 'x-posed-chat-users').length, 0);
+    assert.equal(h.events.filter(event => event.type !== 'xai-chat-users').length, 0);
 });
 
 await check('Fetch fallback works when X does not use Response.json', async () => {

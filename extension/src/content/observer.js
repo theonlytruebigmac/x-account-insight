@@ -1395,13 +1395,13 @@ export function createProcessElementSafe(processElement) {
     return function processElementSafe(element) {
         try {
             processElement(element).catch(error => {
-                console.error('X-Posed: Error processing element:', error.message);
+                console.error('X Account Insight: Error processing element:', error.message);
                 if (element && element.dataset) {
                     element.dataset.xProcessed = 'error';
                 }
             });
         } catch (error) {
-            console.error('X-Posed: Sync error processing element:', error.message);
+            console.error('X Account Insight: Sync error processing element:', error.message);
             if (element && element.dataset) {
                 element.dataset.xProcessed = 'error';
             }
@@ -1684,7 +1684,7 @@ export async function processElement(element, {
                     }
                 }
                 
-                console.warn(`⚠️ X-Posed: Rate limited! Resets at ${resetStr}${relativeStr ? ` (in ${relativeStr})` : ''}`);
+                console.warn(`⚠️ X Account Insight: Rate limited! Resets at ${resetStr}${relativeStr ? ` (in ${relativeStr})` : ''}`);
                 
                 const now = Date.now();
                 if (now - lastRateLimitToastTime > TIMING.RATE_LIMIT_TOAST_COOLDOWN_MS) {
@@ -2163,7 +2163,7 @@ export function cleanupObservers() {
         try {
             cleanupFn();
         } catch (error) {
-            console.error('X-Posed: Observer cleanup error:', error);
+            console.error('X Account Insight: Observer cleanup error:', error);
         }
     }
     observerCleanupFunctions.length = 0;

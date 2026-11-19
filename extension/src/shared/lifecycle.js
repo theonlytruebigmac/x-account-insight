@@ -33,7 +33,7 @@ export function createLifecycle() {
         disposed = true;
         for (const cleanup of [...cleanups].reverse()) {
             try { cleanup(); } catch (error) {
-                console.error('X-Posed: Session cleanup failed:', error);
+                console.error('X Account Insight: Session cleanup failed:', error);
             }
         }
         cleanups.clear();

@@ -762,7 +762,7 @@ function createBlockingSurface(config, container = null) {
         const help = el('p', 'xp-g-help', kind === 'links' ? 'A bare domain matches the whole site and subdomains. A URL with a path stays an exact URL.'
             : kind === 'allowedUsers' ? 'These accounts bypass all filters. Your follows and blocks on X stay unchanged.'
                 : kind === 'accounts' ? 'Usually, add accounts directly from their hovercards—no need to type an ID. To add one here, paste its numeric User ID or permanent x.com/i/user/ link. Matches survive handle changes, follow Hide or Highlight and respect Always Show. Your follows and blocks on X stay unchanged.'
-                    : kind === 'affiliations' ? 'Matches an organization name or handle observed by X-Posed. Some affiliation details appear after opening an account’s hovercard.'
+                    : kind === 'affiliations' ? 'Matches an organization name or handle observed by X Account Insight. Some affiliation details appear after opening an account’s hovercard.'
                         : 'Matches text containing this value, case-insensitively. Emoji and punctuation are supported.');
         help.id = `${inputId}-help`;
         form.append(field, help);

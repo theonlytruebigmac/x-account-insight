@@ -188,8 +188,8 @@ function environment() {
     const mount = (...ids) => {
         const userId = ids.length ? ids[0] : '2097352012367015936';
         const control = api.createUserIdValue(userId); document.body.append(control);
-        return { control, button: control.querySelector('.x-posed-user-id-copy'),
-            fallback: control.querySelector('.x-posed-user-id-fallback'), status: control.querySelector('[role="status"]') };
+        return { control, button: control.querySelector('.xai-user-id-copy'),
+            fallback: control.querySelector('.xai-user-id-fallback'), status: control.querySelector('[role="status"]') };
     };
     const advance = elapsed => {
         time += elapsed;
@@ -209,7 +209,7 @@ await check('numeric IDs retain exact 19/20-digit precision without Number conve
         assert.equal(e.api.profileUrlForUserId(id), `https://x.com/i/user/${id}`);
         const { control, button } = e.mount(id);
         assert.equal(control.dataset.xUserId, id);
-        assert.equal(button.querySelector('.x-posed-user-id-value').textContent, id);
+        assert.equal(button.querySelector('.xai-user-id-value').textContent, id);
     }
 });
 
@@ -217,9 +217,9 @@ await check('grouped card exports retain their label, compact captions, full acc
     const e = environment(), renderer = new e.api.ExportControl();
     const state = renderer._createImageState('demo_account', 1);
     const [copy, save] = state.buttons;
-    const heading = state.element.querySelector('.x-posed-footer-section-heading');
-    const controls = state.element.querySelector('.x-posed-footer-section-controls');
-    assert.equal(state.element.classList.contains('x-posed-footer-section'), true);
+    const heading = state.element.querySelector('.xai-footer-section-heading');
+    const controls = state.element.querySelector('.xai-footer-section-controls');
+    assert.equal(state.element.classList.contains('xai-footer-section'), true);
     assert.equal(state.element.getAttribute('role'), 'group'); assert.equal(state.element.getAttribute('aria-labelledby'), heading.id);
     assert.equal(heading.textContent, 'Card'); assert.ok(heading.id);
     assert.equal(controls.contains(copy), true); assert.equal(controls.contains(save), true);
@@ -237,8 +237,8 @@ await check('grouped card exports retain their label, compact captions, full acc
     state.pending = false; state.success = 'copy'; renderer._renderImageState(state);
     assert.equal(copy, state.buttons[0]); assert.equal(save, state.buttons[1]);
     assert.equal(copy.hasAttribute('title'), false); assert.equal(save.hasAttribute('title'), false);
-    assert.equal(copy.textContent, 'Copy'); assert.equal(copy.classList.contains('x-posed-export-button--success'), true);
-    assert.equal(state.element.querySelector('.x-posed-footer-section-heading'), heading);
+    assert.equal(copy.textContent, 'Copy'); assert.equal(copy.classList.contains('xai-export-button--success'), true);
+    assert.equal(state.element.querySelector('.xai-footer-section-heading'), heading);
     assert.equal(heading.textContent, 'Card'); assert.equal(state.element.getAttribute('aria-labelledby'), heading.id);
     assert.equal(e.document.activeElement, copy);
     const event = save.dispatch('click'); assert.equal(event.defaultPrevented, true); assert.equal(event.stopped, true);
@@ -275,7 +275,7 @@ await check('copy uses an accessible native button and does not navigate the twe
     assert.deepEqual(e.writes, ['https://x.com/i/user/2097352012367015936']);
     assert.equal(navigations, 0); assert.equal(fallback.hidden, true);
     assert.equal(status.textContent, 'Profile link copied');
-    assert.equal(button.classList.contains('x-posed-user-id-copy--success'), true);
+    assert.equal(button.classList.contains('xai-user-id-copy--success'), true);
     assert.equal(button.hasAttribute('aria-busy'), false);
 });
 
@@ -286,8 +286,8 @@ await check('success feedback resets without changing the visible raw ID', async
     e.advance(1);
     assert.equal(status.textContent, ''); assert.equal(button.dataset.xTooltipHeading, 'Copy profile link');
     assert.equal(button.hasAttribute('title'), false);
-    assert.equal(button.classList.contains('x-posed-user-id-copy--success'), false);
-    assert.equal(button.querySelector('.x-posed-user-id-value').textContent, '18446744073709551615');
+    assert.equal(button.classList.contains('xai-user-id-copy--success'), false);
+    assert.equal(button.querySelector('.xai-user-id-value').textContent, '18446744073709551615');
 });
 
 await check('pending clicks are coalesced rather than duplicating clipboard writes', async () => {
@@ -306,7 +306,7 @@ await check('denied and unavailable clipboard show a safe manual link without fa
         if (unavailable) delete e.navigator.clipboard;
         else e.clipboard(() => Promise.reject(new Error('NotAllowedError')));
         const { button, status, fallback } = e.mount('389229444'); button.dispatch('click'); await e.settle();
-        assert.equal(button.classList.contains('x-posed-user-id-copy--success'), false);
+        assert.equal(button.classList.contains('xai-user-id-copy--success'), false);
         assert.doesNotMatch(status.textContent, /Profile link copied/);
         assert.match(status.textContent, /manually/); assert.equal(fallback.hidden, false);
         assert.equal(fallback.href, 'https://x.com/i/user/389229444');
@@ -342,7 +342,7 @@ await check('same-ID metadata enrichment keeps focused button, feedback and even
     current.button.dispatch('click'); await e.settle();
     const next = e.api.createUserIdValue('123');
     assert.equal(e.api.patchCardNode(current.control, next), current.control);
-    assert.equal(current.control.querySelector('.x-posed-user-id-copy'), current.button);
+    assert.equal(current.control.querySelector('.xai-user-id-copy'), current.button);
     assert.equal(e.document.activeElement, current.button);
     assert.equal(current.status.textContent, 'Profile link copied');
     current.button.dispatch('click'); await e.settle();
@@ -354,7 +354,7 @@ await check('changed-ID enrichment replaces closures and copies only the new ID'
     e.clipboard(() => new Promise(resolve => { finish = resolve; }));
     const old = e.mount('123'); old.button.dispatch('click');
     e.api.patchCardNode(old.control, e.api.createUserIdValue('18446744073709551615'));
-    const button = old.control.querySelector('.x-posed-user-id-copy');
+    const button = old.control.querySelector('.xai-user-id-copy');
     assert.notEqual(button, old.button); assert.equal(old.button.isConnected, false);
     assert.equal(old.control.dataset.xUserId, '18446744073709551615');
     finish(); await e.settle(); assert.equal(button.dataset.xTooltipHeading, 'Copy profile link');
@@ -366,23 +366,23 @@ await check('changed-ID enrichment replaces closures and copies only the new ID'
 await check('metadata header patches preserve the icon-only Always Show action, accessibility, listener, pending state and focus', () => {
     const e = environment();
     const createHeader = name => {
-        const header = e.document.createElement('div'); header.className = 'x-posed-card-header';
-        const title = e.document.createElement('div'); title.className = 'x-posed-title';
-        const nameLine = e.document.createElement('div'); nameLine.className = 'x-posed-name-line';
-        const label = e.document.createElement('span'); label.className = 'x-posed-name'; label.textContent = name;
+        const header = e.document.createElement('div'); header.className = 'xai-card-header';
+        const title = e.document.createElement('div'); title.className = 'xai-title';
+        const nameLine = e.document.createElement('div'); nameLine.className = 'xai-name-line';
+        const label = e.document.createElement('span'); label.className = 'xai-name'; label.textContent = name;
         nameLine.append(label);
-        const handleLine = e.document.createElement('div'); handleLine.className = 'x-posed-handle-line';
-        const handle = e.document.createElement('span'); handle.className = 'x-posed-handle'; handle.textContent = '@demo_account';
-        const exception = e.document.createElement('div'); exception.className = 'x-posed-allowlist-control';
+        const handleLine = e.document.createElement('div'); handleLine.className = 'xai-handle-line';
+        const handle = e.document.createElement('span'); handle.className = 'xai-handle'; handle.textContent = '@demo_account';
+        const exception = e.document.createElement('div'); exception.className = 'xai-allowlist-control';
         handleLine.append(handle); title.append(nameLine, handleLine);
-        const actions = e.document.createElement('div'); actions.className = 'x-posed-header-actions';
-        const close = e.document.createElement('button'); close.className = 'x-posed-card-close';
+        const actions = e.document.createElement('div'); actions.className = 'xai-header-actions';
+        const close = e.document.createElement('button'); close.className = 'xai-card-close';
         actions.append(exception, close); header.append(title, actions);
         return { header, exception, actions, close };
     };
     const current = createHeader('Initial name');
     e.document.body.append(current.header);
-    const button = e.document.createElement('button'); button.className = 'x-posed-allowlist-button';
+    const button = e.document.createElement('button'); button.className = 'xai-allowlist-button';
     const status = e.document.createElement('div'); const renderer = new e.api.ExportControl();
     const state = { button, status, handle: 'demo_account', allowed: false, pending: true, error: '', message: '' };
     renderer._renderAllowlist(state);
@@ -393,13 +393,13 @@ await check('metadata header patches preserve the icon-only Always Show action, 
     current.exception.dataset.currentState = 'saving'; current.exception.append(button); button.focus();
     const next = createHeader('Enriched name');
     e.api.patchCardNode(current.header, next.header);
-    assert.equal(current.header.querySelector('.x-posed-name').textContent, 'Enriched name');
-    assert.equal(current.header.querySelector('.x-posed-allowlist-control'), current.exception);
-    assert.equal(current.header.querySelector('.x-posed-allowlist-button'), button);
-    assert.equal(current.header.querySelector('.x-posed-header-actions'), current.actions);
-    assert.equal(current.header.querySelector('.x-posed-card-close'), current.close);
+    assert.equal(current.header.querySelector('.xai-name').textContent, 'Enriched name');
+    assert.equal(current.header.querySelector('.xai-allowlist-control'), current.exception);
+    assert.equal(current.header.querySelector('.xai-allowlist-button'), button);
+    assert.equal(current.header.querySelector('.xai-header-actions'), current.actions);
+    assert.equal(current.header.querySelector('.xai-card-close'), current.close);
     assert.equal(current.actions.childNodes[0], current.exception); assert.equal(current.actions.childNodes[1], current.close);
-    assert.equal(current.header.querySelector('.x-posed-handle-line').contains(current.exception), false);
+    assert.equal(current.header.querySelector('.xai-handle-line').contains(current.exception), false);
     assert.equal(button.isConnected, true); assert.equal(e.document.activeElement, button);
     assert.equal(button.getAttribute('aria-busy'), 'true'); assert.equal(button.getAttribute('aria-disabled'), 'true');
     assert.equal(current.exception.dataset.currentState, 'saving');
@@ -413,7 +413,7 @@ await check('avatar metadata patches preserve the same loaded image, listeners a
     const e = environment();
     const url = 'https://pbs.twimg.com/profile_images/123/demo_normal.jpg';
     const picture = (desired, shape = 'circle') => {
-        const image = e.document.createElement('img'); image.className = 'x-posed-card-avatar';
+        const image = e.document.createElement('img'); image.className = 'xai-card-avatar';
         image.dataset.xAvatarUrl = desired; image.dataset.shape = shape;
         return image;
     };
@@ -437,15 +437,15 @@ await check('avatar metadata patches preserve the same loaded image, listeners a
 await check('parent header reconciliation keeps its cursor valid when replacing an avatar URL', () => {
     const e = environment();
     const header = (url, label) => {
-        const element = e.document.createElement('div'); element.className = 'x-posed-card-header';
-        const avatar = e.document.createElement('img'); avatar.className = 'x-posed-card-avatar';
+        const element = e.document.createElement('div'); element.className = 'xai-card-header';
+        const avatar = e.document.createElement('img'); avatar.className = 'xai-card-avatar';
         avatar.dataset.xAvatarUrl = url; avatar.dataset.shape = 'circle';
-        const title = e.document.createElement('div'); title.className = 'x-posed-title';
-        const name = e.document.createElement('span'); name.className = 'x-posed-name'; name.textContent = label;
+        const title = e.document.createElement('div'); title.className = 'xai-title';
+        const name = e.document.createElement('span'); name.className = 'xai-name'; name.textContent = label;
         title.append(name);
-        const actions = e.document.createElement('div'); actions.className = 'x-posed-header-actions';
-        const exception = e.document.createElement('div'); exception.className = 'x-posed-allowlist-control';
-        const close = e.document.createElement('button'); close.className = 'x-posed-card-close';
+        const actions = e.document.createElement('div'); actions.className = 'xai-header-actions';
+        const exception = e.document.createElement('div'); exception.className = 'xai-allowlist-control';
+        const close = e.document.createElement('button'); close.className = 'xai-card-close';
         actions.append(exception, close); element.append(avatar, title, actions);
         return { element, avatar, title, name, exception, close, actions };
     };
@@ -457,74 +457,74 @@ await check('parent header reconciliation keeps its cursor valid when replacing 
     assert.deepEqual(old.element.childNodes, [next.avatar, old.title, old.actions], 'The replacement stays first, before the existing title and action group');
     assert.deepEqual(old.actions.childNodes, [old.exception, old.close]);
     assert.equal(old.avatar.isConnected, false); assert.equal(next.avatar.isConnected, true);
-    assert.equal(old.element.querySelector('.x-posed-name'), old.name); assert.equal(old.name.textContent, 'Enriched name');
-    assert.equal(old.element.querySelector('.x-posed-allowlist-control'), old.exception);
+    assert.equal(old.element.querySelector('.xai-name'), old.name); assert.equal(old.name.textContent, 'Enriched name');
+    assert.equal(old.element.querySelector('.xai-allowlist-control'), old.exception);
     assert.equal(action.isConnected, true); assert.equal(e.document.activeElement, action, 'Unrelated focused actions survive the parent patch');
 });
 
 await check('PNG header snapshots omit Always Show and recover full-width rows from grid/display-contents layout', () => {
     const e = environment();
-    const card = e.document.createElement('div'); card.className = 'x-posed-hovercard x-posed-hovercard-visible'; e.document.body.append(card);
-    const header = e.document.createElement('div'); header.className = 'x-posed-card-header';
+    const card = e.document.createElement('div'); card.className = 'xai-hovercard xai-hovercard-visible'; e.document.body.append(card);
+    const header = e.document.createElement('div'); header.className = 'xai-card-header';
     header.style.display = 'grid'; header.style.gridTemplateColumns = '240px 27px'; header.style.rowGap = '4px';
-    const title = e.document.createElement('div'); title.className = 'x-posed-title'; title.style.display = 'contents';
-    const name = e.document.createElement('span'); name.className = 'x-posed-name'; name.textContent = 'Noah Example';
-    const handleLine = e.document.createElement('div'); handleLine.className = 'x-posed-handle-line';
-    const handle = e.document.createElement('span'); handle.className = 'x-posed-handle'; handle.textContent = '@demo_account';
-    const exception = e.document.createElement('div'); exception.className = 'x-posed-allowlist-control';
+    const title = e.document.createElement('div'); title.className = 'xai-title'; title.style.display = 'contents';
+    const name = e.document.createElement('span'); name.className = 'xai-name'; name.textContent = 'Noah Example';
+    const handleLine = e.document.createElement('div'); handleLine.className = 'xai-handle-line';
+    const handle = e.document.createElement('span'); handle.className = 'xai-handle'; handle.textContent = '@demo_account';
+    const exception = e.document.createElement('div'); exception.className = 'xai-allowlist-control';
     const button = e.document.createElement('button'); button.textContent = 'Always show'; exception.append(button);
-    const actions = e.document.createElement('div'); actions.className = 'x-posed-header-actions';
-    const close = e.document.createElement('button'); close.className = 'x-posed-card-close'; actions.append(exception, close);
-    const status = e.document.createElement('div'); status.className = 'x-posed-allowlist-status'; status.textContent = 'Always showing @demo_account';
+    const actions = e.document.createElement('div'); actions.className = 'xai-header-actions';
+    const close = e.document.createElement('button'); close.className = 'xai-card-close'; actions.append(exception, close);
+    const status = e.document.createElement('div'); status.className = 'xai-allowlist-status'; status.textContent = 'Always showing @demo_account';
     handleLine.append(handle); title.append(name, handleLine); header.append(title, actions); card.append(header, status);
-    const { root } = e.api.createSnapshot(card), exportedHeader = root.querySelector('.x-posed-card-header');
+    const { root } = e.api.createSnapshot(card), exportedHeader = root.querySelector('.xai-card-header');
     assert.match(root.textContent, /Noah Example@demo_account/);
     assert.doesNotMatch(root.textContent, /Always show|Always showing/);
-    assert.equal(root.querySelector('.x-posed-allowlist-control'), null); assert.equal(root.querySelector('.x-posed-allowlist-status'), null);
-    assert.equal(root.querySelector('.x-posed-header-actions'), null, 'The entire action group is omitted, including its otherwise empty layout box');
+    assert.equal(root.querySelector('.xai-allowlist-control'), null); assert.equal(root.querySelector('.xai-allowlist-status'), null);
+    assert.equal(root.querySelector('.xai-header-actions'), null, 'The entire action group is omitted, including its otherwise empty layout box');
     assert.equal(exportedHeader.style.display, 'block'); assert.equal(exportedHeader.style.gridTemplateColumns, 'none');
-    const exportedTitle = root.querySelector('.x-posed-title');
+    const exportedTitle = root.querySelector('.xai-title');
     assert.equal(exportedTitle.style.display, 'flex'); assert.equal(exportedTitle.style.flexDirection, 'column'); assert.equal(exportedTitle.style.width, '100%');
     assert.equal(exportedTitle.style.rowGap, '4px', 'The original header row spacing is retained without action tracks');
-    assert.equal(root.querySelector('.x-posed-handle-line').style.gridTemplateColumns, 'minmax(0, 1fr)');
+    assert.equal(root.querySelector('.xai-handle-line').style.gridTemplateColumns, 'minmax(0, 1fr)');
 });
 
 await check('PNG snapshots retain a visible avatar beside the title and gracefully reflow after image failure', () => {
     for (const failed of [false, true]) {
         const e = environment(); const card = e.document.createElement('div');
-        card.className = 'x-posed-hovercard x-posed-hovercard-visible'; e.document.body.append(card);
-        const header = e.document.createElement('div'); header.className = 'x-posed-card-header';
+        card.className = 'xai-hovercard xai-hovercard-visible'; e.document.body.append(card);
+        const header = e.document.createElement('div'); header.className = 'xai-card-header';
         header.style.display = 'grid'; header.style.gridTemplateColumns = '48px 208px 27px'; header.style.rowGap = '4px';
-        const avatar = e.document.createElement('img'); avatar.className = 'x-posed-card-avatar'; avatar.hidden = failed;
+        const avatar = e.document.createElement('img'); avatar.className = 'xai-card-avatar'; avatar.hidden = failed;
         const url = 'https://pbs.twimg.com/profile_images/123/demo_normal.jpg'; avatar.setAttribute('src', url);
-        const title = e.document.createElement('div'); title.className = 'x-posed-title'; title.style.display = 'contents';
-        const name = e.document.createElement('span'); name.className = 'x-posed-name'; name.textContent = 'Noah Example';
-        const handleLine = e.document.createElement('div'); handleLine.className = 'x-posed-handle-line';
-        const handle = e.document.createElement('span'); handle.className = 'x-posed-handle'; handle.textContent = '@demo_account';
+        const title = e.document.createElement('div'); title.className = 'xai-title'; title.style.display = 'contents';
+        const name = e.document.createElement('span'); name.className = 'xai-name'; name.textContent = 'Noah Example';
+        const handleLine = e.document.createElement('div'); handleLine.className = 'xai-handle-line';
+        const handle = e.document.createElement('span'); handle.className = 'xai-handle'; handle.textContent = '@demo_account';
         Object.assign(handle.style, { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' });
         handleLine.append(handle); title.append(name, handleLine); header.append(avatar, title);
-        const actions = e.document.createElement('div'); actions.className = 'x-posed-header-actions';
-        const close = e.document.createElement('button'); close.className = 'x-posed-card-close'; actions.append(close); header.append(actions);
+        const actions = e.document.createElement('div'); actions.className = 'xai-header-actions';
+        const close = e.document.createElement('button'); close.className = 'xai-card-close'; actions.append(close); header.append(actions);
         card.append(header, e.api.createUserIdValue('18446744073709551615'));
         const { root, assets } = e.api.createSnapshot(card);
-        const copiedHeader = root.querySelector('.x-posed-card-header'), copiedAvatar = root.querySelector('.x-posed-card-avatar');
+        const copiedHeader = root.querySelector('.xai-card-header'), copiedAvatar = root.querySelector('.xai-card-avatar');
         assert.match(root.textContent, /Noah Example@demo_account18446744073709551615/);
         assert.equal(root.querySelector('button'), null);
-        assert.equal(root.querySelector('.x-posed-header-actions'), null);
-        const copiedHandle = root.querySelector('.x-posed-handle');
+        assert.equal(root.querySelector('.xai-header-actions'), null);
+        const copiedHandle = root.querySelector('.xai-handle');
         assert.equal(copiedHandle.style.whiteSpace, 'normal'); assert.equal(copiedHandle.style.overflow, 'visible');
         assert.equal(copiedHandle.style.textOverflow, 'clip', 'PNG exports retain the complete handle without ellipsis');
         if (failed) {
             assert.equal(copiedAvatar, null); assert.equal(assets.length, 0);
             assert.equal(copiedHeader.style.display, 'block');
-            assert.equal(root.querySelector('.x-posed-title').style.width, '100%');
+            assert.equal(root.querySelector('.xai-title').style.width, '100%');
         } else {
             assert.ok(copiedAvatar); assert.equal(assets.length, 1); assert.equal(assets[0].artwork.url, url);
             assert.equal(assets[0].target, copiedAvatar); assert.equal(copiedHeader.style.display, 'flex');
             assert.equal(copiedAvatar.style.width, '48px'); assert.equal(copiedAvatar.style.height, '48px');
             assert.equal(copiedAvatar.style.flex, '0 0 48px');
-            assert.equal(root.querySelector('.x-posed-title').style.flex, '1');
-            assert.equal(root.querySelector('.x-posed-title').style.width, 'auto');
+            assert.equal(root.querySelector('.xai-title').style.flex, '1');
+            assert.equal(root.querySelector('.xai-title').style.width, 'auto');
         }
     }
 });
@@ -532,16 +532,16 @@ await check('PNG snapshots retain a visible avatar beside the title and graceful
 await check('PNG snapshots retain raw ID but omit icons, clipboard feedback and fallback links', async () => {
     for (const failure of [false, true]) {
         const e = environment(); const card = e.document.createElement('div');
-        card.className = 'x-posed-hovercard x-posed-hovercard-visible'; e.document.body.append(card);
+        card.className = 'xai-hovercard xai-hovercard-visible'; e.document.body.append(card);
         const heading = e.document.createElement('div'); heading.textContent = 'Account details'; card.append(heading);
         const current = e.mount('18446744073709551615'); card.append(current.control);
-        const footer = e.document.createElement('div'); footer.className = 'x-posed-card-actions';
-        const quickGroup = e.document.createElement('div'); quickGroup.className = 'x-posed-quick-controls x-posed-footer-section';
-        const groupHeading = e.document.createElement('div'); groupHeading.className = 'x-posed-footer-section-heading'; groupHeading.textContent = 'Highlight';
+        const footer = e.document.createElement('div'); footer.className = 'xai-card-actions';
+        const quickGroup = e.document.createElement('div'); quickGroup.className = 'xai-quick-controls xai-footer-section';
+        const groupHeading = e.document.createElement('div'); groupHeading.className = 'xai-footer-section-heading'; groupHeading.textContent = 'Highlight';
         quickGroup.append(groupHeading);
         const exportState = new e.api.ExportControl()._createImageState('demo_account', 1);
         footer.append(quickGroup, exportState.element); card.append(footer);
-        const tooltip = e.document.createElement('div'); tooltip.className = 'x-posed-card-tooltip';
+        const tooltip = e.document.createElement('div'); tooltip.className = 'xai-card-tooltip';
         tooltip.setAttribute('role', 'tooltip'); tooltip.textContent = 'Explanatory card tooltip: hide Belgium'; card.append(tooltip);
         e.clipboard(() => failure ? Promise.reject(new Error('Denied')) : Promise.resolve());
         current.button.dispatch('click'); await e.settle();
@@ -549,11 +549,11 @@ await check('PNG snapshots retain raw ID but omit icons, clipboard feedback and 
         assert.match(root.textContent, /18446744073709551615/);
         assert.doesNotMatch(root.textContent, /Profile link copied|Could not copy|https:\/\/x.com\/i\/user|Explanatory card tooltip|Highlight|\bCard\b/);
         assert.equal(root.querySelector('button'), null);
-        assert.equal(root.querySelector('.x-posed-user-id-icon'), null);
-        assert.equal(root.querySelector('.x-posed-user-id-fallback'), null);
+        assert.equal(root.querySelector('.xai-user-id-icon'), null);
+        assert.equal(root.querySelector('.xai-user-id-fallback'), null);
         assert.equal(root.querySelector('[role="status"]'), null);
         assert.equal(root.querySelector('[role="tooltip"]'), null);
-        assert.equal(root.querySelector('.x-posed-footer-section-heading'), null);
+        assert.equal(root.querySelector('.xai-footer-section-heading'), null);
         assert.equal(assets.length, 0, 'Copying the ID adds no image/network dependencies');
     }
 });
