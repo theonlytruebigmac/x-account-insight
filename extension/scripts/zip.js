@@ -7,7 +7,7 @@
 import { createWriteStream, existsSync, mkdirSync, readFileSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -30,7 +30,7 @@ if (!existsSync(outputDir)) {
 }
 
 const output = createWriteStream(outputFile);
-const archive = archiver('zip', {
+const archive = new ZipArchive({
     zlib: { level: 9 } // Maximum compression
 });
 
