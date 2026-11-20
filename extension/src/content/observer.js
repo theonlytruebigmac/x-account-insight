@@ -16,6 +16,7 @@ import { createFilterPlaceholder, updateFilterPlaceholder } from './filter-place
 import { createRelatedPostController } from './related-posts.js';
 import { rememberPostRelation } from './post-relations-cache.js';
 import { matchingBlockedRegions } from '../shared/region-membership.js';
+import { hasBlockedAffiliation } from '../shared/affiliation-match.js';
 import { captureDisplayName, emojiImageText } from './display-name.js';
 import {
     ACCOUNT_COUNT_FILTERS, countDisplayNameDigits, countHandleDigits, isAccountCountThreshold, matchesAccountCount
@@ -815,35 +816,6 @@ function extractTextWithEmojis(element) {
  * @param {Set} blockedTags - Set of blocked tags
  * @returns {boolean} - True if any blocked tag is found
  */
-/**
- * Does an account's affiliation label match the blocked set? X exposes the parent
- * organisation on affiliated accounts as a badge next to the display name, which
- * we already read from the API and now also share via the community cache.
- *
- * Matching is case-insensitive substring in both directions, mirroring blocked tags: it
- * lets someone type part of an organisation name and catch it without knowing the exact label.
- * @param {{affiliate?: {name?: string}|null, affiliateUsername?: string|null}|null|undefined} meta
- * @param {Set<string>} blockedAffiliations - lowercase blocked affiliation names
- * @returns {boolean}
- */
-function hasBlockedAffiliation(meta, blockedAffiliations) {
-    if (!meta || !blockedAffiliations || blockedAffiliations.size === 0) return false;
-
-    const candidates = [];
-    if (meta.affiliate && meta.affiliate.name) candidates.push(String(meta.affiliate.name).toLowerCase());
-    if (meta.affiliateUsername) candidates.push(String(meta.affiliateUsername).toLowerCase());
-    if (candidates.length === 0) return false;
-
-    for (const blocked of blockedAffiliations) {
-        const needle = blocked.toLowerCase().trim();
-        if (!needle) continue;
-        for (const candidate of candidates) {
-            if (candidate.includes(needle) || needle.includes(candidate)) return true;
-        }
-    }
-    return false;
-}
-
 // ============================================
 // ACCOUNT LABEL — Parody / Commentary / Fan (#41) and grey verification (#48)
 // ============================================

@@ -177,9 +177,10 @@ function getCsrfToken() {
     let cookies;
     try { cookies = document.cookie.split('; '); } catch { return null; }
     for (const cookie of cookies) {
-        const [key, value] = cookie.split('=');
-        if (key === 'ct0') {
-            return value;
+        // Split at the FIRST '=' only: a token value may itself contain '='.
+        const separator = cookie.indexOf('=');
+        if (separator !== -1 && cookie.slice(0, separator) === 'ct0') {
+            return cookie.slice(separator + 1);
         }
     }
     return null;
@@ -196,7 +197,7 @@ function getCsrfToken() {
  * HomeTimeline fires again on every scroll, but a profile issues UserByScreenName exactly
  * once, so losing that race means no bio, account type or counts for that profile at all.
  *
- * page-script.js short-circuits on window.__X_POSED_INJECTED__, so whichever path lands
+ * page-script.js short-circuits on window.__XAI_INJECTED__, so whichever path lands
  * first wins and the other is a no-op.
  */
 function injectPageScript(current) {
@@ -1113,7 +1114,7 @@ window.addEventListener('pageshow', event => {
 initialize();
 
 // Export for debugging (uses memoized functions when available)
-window.__X_POSED_CONTENT__ = {
+window.__XAI_CONTENT__ = {
     version: VERSION,
     scanPage: () => {
         // Debugging must not resurrect a disposed or not-yet-ready session.

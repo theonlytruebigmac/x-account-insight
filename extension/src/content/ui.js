@@ -7,7 +7,7 @@
  */
 
 import { SELECTORS, CSS_CLASSES, TIMING } from '../shared/constants.js';
-import { findInsertionPoint, getDeviceCountry, formatCountryName, debounce, throttle } from '../shared/utils.js';
+import { findInsertionPoint, getDeviceCountry, formatCountryName, debounce, throttle, plainAttributeText } from '../shared/utils.js';
 import { deviceIcon, glyph, flagImage } from './icons.js';
 import { showModal } from './modal.js';
 import { captureEvidence } from './evidence-capture.js';
@@ -181,19 +181,6 @@ export function showRateLimitToast(timeUntilReset) {
 // ============================================
 
 /**
- * Sanitize text for safe display (prevents XSS)
- * @param {string} text - Text to sanitize
- * @returns {string} - Sanitized text, max 100 characters
- */
-export function sanitizeText(text) {
-    if (!text || typeof text !== 'string') return '';
-    return text.replace(/[<>&"']/g, char => {
-        const entities = { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' };
-        return entities[char] || char;
-    }).substring(0, 100);
-}
-
-/**
  * Find the insertion point for badge in UserCell
  */
 export function findUserCellInsertionPoint(userCell, screenName) {
@@ -289,7 +276,7 @@ export function createBadge(element, screenName, info, isUserCell, settings, deb
     const detailsButton = document.createElement('button');
     detailsButton.type = 'button';
     detailsButton.className = 'x-badge-details';
-    detailsButton.setAttribute('aria-label', `Account details for @${sanitizeText(screenName)}`);
+    detailsButton.setAttribute('aria-label', `Account details for @${plainAttributeText(screenName, 15)}`);
     detailsButton.setAttribute('aria-haspopup', 'dialog');
     detailsButton.setAttribute('aria-expanded', 'false');
     badge.appendChild(detailsButton);
@@ -314,7 +301,7 @@ export function createBadge(element, screenName, info, isUserCell, settings, deb
             const flagImg = flagImage(flagCountry);
             const flagSpan = document.createElement('span');
             flagSpan.className = 'x-flag';
-            flagSpan.title = sanitizeText(flagLabel);
+            flagSpan.title = plainAttributeText(flagLabel);
 
             if (flagImg) {
                 flagSpan.appendChild(flagImg);
@@ -338,7 +325,7 @@ export function createBadge(element, screenName, info, isUserCell, settings, deb
     if (info.device && settings.showDevices !== false) {
         const deviceSpan = document.createElement('span');
         deviceSpan.className = 'x-device';
-        deviceSpan.title = 'Connected via: ' + sanitizeText(info.device);
+        deviceSpan.title = 'Connected via: ' + plainAttributeText(info.device);
         deviceSpan.appendChild(deviceIcon(info.device, 15));
         detailsButton.appendChild(deviceSpan);
         hasContent = true;

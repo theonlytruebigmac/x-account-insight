@@ -454,6 +454,8 @@ class CloudCacheClient {
         const wanted = [];
         for (const username of usernames) {
             const name = String(username).toLowerCase();
+            // Handles are interpolated into the request URL: never send anything else.
+            if (!USERNAME_RE.test(name)) continue;
             const missedAt = this.recentMisses.get(name);
             if (missedAt && now - missedAt < CLOUD_CACHE_CONFIG.MISS_TTL_MS) continue;
             wanted.push(name);
@@ -837,7 +839,9 @@ class CloudCacheClient {
      * Skipped when the server is already known to hold the same (or richer) data.
      */
     async contribute(username, data) {
-        if (!this.enabled || !username || !data) {
+        // Without a key nothing can be sent, so nothing may pile up in the persisted queue
+        // (and later be uploaded in bulk the moment a key is entered).
+        if (!this.enabled || !this.isConfigured() || !username || !data) {
             return;
         }
         // Do not circulate old cloud data as a newly observed account, or upload

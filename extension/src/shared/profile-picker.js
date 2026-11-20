@@ -276,7 +276,7 @@ export function createProfilePicker({ client, manage = false, label: labelText =
             return false;
         } finally {
             busy = false;
-            render();
+            if (!disposed) render();
         }
     }
 

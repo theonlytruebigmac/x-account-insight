@@ -26,15 +26,26 @@ export class ProfileStore {
         if (this.loading) return this.loading;
         this.loading = (async () => {
             const stored = (await this.storage.get(PROFILE_STORAGE_KEY))[PROFILE_STORAGE_KEY];
+            let revision = 0;
             if (stored !== undefined) {
-                const value = normalizeProfilesBackup(stored);
-                const revision = stored.revision;
-                if (!Number.isSafeInteger(revision) || revision < 0) throw new TypeError('Invalid profile revision.');
-                this.state = { ...value, revision };
-                return;
+                try {
+                    const value = normalizeProfilesBackup(stored);
+                    const storedRevision = stored.revision;
+                    if (!Number.isSafeInteger(storedRevision) || storedRevision < 0) throw new TypeError('Invalid profile revision.');
+                    this.state = { ...value, revision: storedRevision };
+                    return;
+                } catch (error) {
+                    // An unreadable record would otherwise fail every later message, with no way
+                    // out. Keep the bytes for recovery, then start again from the saved settings.
+                    console.error('Stored profiles are unreadable; starting from the current settings:', error);
+                    try { await this.storage.set({ [`${PROFILE_STORAGE_KEY}_unreadable`]: stored }); } catch { /* best effort */ }
+                    // Open tabs ignore snapshots older than the revision they already hold.
+                    if (Number.isSafeInteger(stored?.revision) && stored.revision >= 0 &&
+                        stored.revision < Number.MAX_SAFE_INTEGER) revision = stored.revision + 1;
+                }
             }
             const initial = {
-                version: 1, revision: 0, editorProfileId: DEFAULT_PROFILE_ID, accounts: {},
+                version: 1, revision, editorProfileId: DEFAULT_PROFILE_ID, accounts: {},
                 profiles: [{ id: DEFAULT_PROFILE_ID, name: 'Default',
                     settings: profileSettings(this.getSettings(), { strict: false }),
                     filters: profileFilters(this.getFilters(), { strict: false }) }]

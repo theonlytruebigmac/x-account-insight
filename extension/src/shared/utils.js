@@ -392,6 +392,20 @@ export function findInsertionPoint(container, screenName) {
 }
 
 /**
+ * Text for a plain-text DOM property such as `title` or an ARIA label: control characters
+ * removed and the length bounded. It must NOT be HTML-escaped. These properties are not
+ * parsed as markup, so escaping would show the user literal entities ("People&#39;s").
+ * @param {any} value
+ * @param {number} [maxLength=100]
+ * @returns {string}
+ */
+export function plainAttributeText(value, maxLength = 100) {
+    if (typeof value !== 'string') return '';
+    // eslint-disable-next-line no-control-regex
+    return value.replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, maxLength);
+}
+
+/**
  * Create DOM element with attributes and children.
  * Supports className, style objects, dataset, event handlers, and nested children.
  * @param {string} tag - HTML tag name
@@ -440,6 +454,15 @@ export function sleep(ms) {
 }
 
 /**
+ * Count into a plain object keyed by untrusted text. Keys such as "__proto__" or
+ * "constructor" must become ordinary counters, not reach Object.prototype members.
+ */
+function bump(counts, key) {
+    if (Object.hasOwn(counts, key)) counts[key]++;
+    else Object.defineProperty(counts, key, { value: 1, writable: true, enumerable: true, configurable: true });
+}
+
+/**
  * Calculate statistics from cache data.
  * @param {Array<{location?: string, device?: string, locationAccurate?: boolean}>} cacheEntries - Array of cache entries
  * @returns {{
@@ -471,13 +494,13 @@ export function calculateStatistics(cacheEntries) {
         // Count by country
         if (entry.location) {
             const country = entry.location.toLowerCase();
-            stats.countryCounts[country] = (stats.countryCounts[country] || 0) + 1;
+            bump(stats.countryCounts, country);
         }
         
         // Count by device
         if (entry.device) {
             const deviceType = getDeviceCategory(entry.device);
-            stats.deviceCounts[deviceType] = (stats.deviceCounts[deviceType] || 0) + 1;
+            bump(stats.deviceCounts, deviceType);
         }
         
         // Count VPN users

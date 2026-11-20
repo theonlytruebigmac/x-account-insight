@@ -51,7 +51,8 @@ export function setProfile(screenName, data) {
     const key = screenName.toLowerCase();
     const cached = profiles.get(key) || {};
     const userId = normalizeAccountId(data.userId);
-    const identityChanged = !!userId && userId !== cached.userId;
+    // Only provable when both sides carry an ID; an ID-less earlier record is not evidence of reuse.
+    const identityChanged = !!userId && !!cached.userId && userId !== cached.userId;
     // Handles can be reassigned. An observed new ID cannot borrow the old profile.
     const previous = identityChanged ? {} : cached;
     const next = { ...previous };

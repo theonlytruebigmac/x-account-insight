@@ -8,10 +8,10 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
 import { sleep } from '../shared/utils.js';
 import browserAPI from '../shared/browser-api.js';
 import {
-    PAGE_LOOKUP_BURST, RATE_LIMIT_BUDGET_STORAGE_KEY, RATE_LIMIT_RESERVE_RELEASE_MS, RATE_LIMIT_STORAGE_KEY,
-    lookupReserveRatio, mergeRateLimitBudget, rateLimitIntervalMs, readRateLimitBudget, readRateLimitReset, withLookupTimeout
+    MAX_RATE_LIMIT_WAIT_MS, PAGE_LOOKUP_BURST, RATE_LIMIT_BUDGET_STORAGE_KEY, RATE_LIMIT_RESERVE_RELEASE_MS, RATE_LIMIT_STORAGE_KEY,
+    clampRateLimitDeadline, lookupReserveRatio, mergeRateLimitBudget, rateLimitIntervalMs, readRateLimitBudget, readRateLimitReset, withLookupTimeout
 } from '../shared/request-policy.js';
-import { AccountResponseMismatchError, parseAccountResponse } from '../shared/account-response.js';
+import { AccountResponseMismatchError, AccountResponseUnusableError, parseAccountResponse } from '../shared/account-response.js';
 
 /**
  * API Error with typed error codes
@@ -35,6 +35,7 @@ export const API_ERROR_CODES = {
     TIMEOUT: 'TIMEOUT',
     PARSE_ERROR: 'PARSE_ERROR',
     NOT_FOUND: 'NOT_FOUND',
+    UNAVAILABLE: 'UNAVAILABLE',
     UNAUTHORIZED: 'UNAUTHORIZED',
     UNKNOWN: 'UNKNOWN'
 };
@@ -134,7 +135,9 @@ class RequestQueue {
     }
 
     setRateLimit(resetTime) {
-        if (Number.isFinite(resetTime)) this.rateLimitReset = Math.max(this.rateLimitReset, resetTime);
+        if (Number.isFinite(resetTime)) {
+            this.rateLimitReset = Math.max(this.rateLimitReset, clampRateLimitDeadline(resetTime));
+        }
     }
 
     setRateLimitBudget(budget) {
@@ -188,7 +191,9 @@ class RequestDeduplicator {
         // worker is torn down on idle, clearing everything), so no per-request timer.
         const promise = requestFn()
             .finally(() => {
-                this._cleanup(key);
+                // Only remove our own entry: if capacity eviction dropped it and the same key
+                // was requested again, the map now holds a newer promise that is still running.
+                if (this.pending.get(key) === promise) this._cleanup(key);
             });
 
         this.pending.set(key, promise);
@@ -230,13 +235,23 @@ export class XAPIClient {
         this.rateLimitBudget = null;
         this.nextPageLookupAt = 0;
         this.rateLimitReady = this.storage.get([RATE_LIMIT_STORAGE_KEY, RATE_LIMIT_BUDGET_STORAGE_KEY]).then(result => {
+            const now = Date.now();
+            const limit = now + MAX_RATE_LIMIT_WAIT_MS;
+            const invalid = [];
             const reset = result[RATE_LIMIT_STORAGE_KEY];
-            if (Number.isFinite(reset) && reset > Date.now()) this.queue.setRateLimit(reset);
+            // A deadline beyond any real window is corrupt (or forged). Dropping it, rather
+            // than clamping it, is what lets a bad stored value heal instead of re-arming
+            // a fresh cooldown at every worker restart.
+            if (reset !== undefined && !(Number.isFinite(reset) && reset <= limit)) invalid.push(RATE_LIMIT_STORAGE_KEY);
+            else if (Number.isFinite(reset) && reset > now) this.queue.setRateLimit(reset);
             const budget = result[RATE_LIMIT_BUDGET_STORAGE_KEY];
-            if (budget) {
+            if (budget !== undefined && !(Number.isFinite(budget?.resetTime) && budget.resetTime <= limit)) {
+                invalid.push(RATE_LIMIT_BUDGET_STORAGE_KEY);
+            } else if (budget) {
                 this.rateLimitBudget = mergeRateLimitBudget(null, budget);
                 this.queue.setRateLimitBudget(this.rateLimitBudget);
             }
+            if (invalid.length) return this.storage.remove?.(invalid);
         }).catch(() => {});
     }
 
@@ -284,7 +299,8 @@ export class XAPIClient {
     async fetchUserInfo(screenName, csrfToken = null) {
         await this.rateLimitReady;
         // Use deduplicator to prevent duplicate requests
-        return this.deduplicator.dedupe(screenName, async () => {
+        // Handles are case-insensitive; one in-flight request serves every spelling.
+        return this.deduplicator.dedupe(String(screenName).toLowerCase(), async () => {
             return this.queue.add(async () => {
                 return this.executeRequest(screenName, csrfToken);
             });
@@ -398,6 +414,7 @@ export class XAPIClient {
                 // Don't retry rate limits, auth errors, or not found
                 if (error.code === API_ERROR_CODES.RATE_LIMITED ||
                     error.code === API_ERROR_CODES.UNAUTHORIZED ||
+                    error.code === API_ERROR_CODES.UNAVAILABLE ||
                     error.code === API_ERROR_CODES.NOT_FOUND) {
                     throw error;
                 }
@@ -462,9 +479,12 @@ export class XAPIClient {
             );
         }
 
+        // A server-side failure (or timeout) is X having a bad moment, not a verdict on the
+        // account. Callers retry transient codes later instead of remembering a permanent miss.
+        const transient = response.status >= 500 || response.status === 408;
         throw new APIError(
             `API error: ${response.status}`,
-            API_ERROR_CODES.UNKNOWN,
+            transient ? API_ERROR_CODES.NETWORK_ERROR : API_ERROR_CODES.UNKNOWN,
             response.status
         );
     }
@@ -479,6 +499,9 @@ export class XAPIClient {
             // Keep mismatches non-retryable and preserve the existing typed API errors.
             if (error instanceof AccountResponseMismatchError) {
                 throw new APIError(error.message, API_ERROR_CODES.NOT_FOUND);
+            }
+            if (error instanceof AccountResponseUnusableError) {
+                throw new APIError(error.message, API_ERROR_CODES[error.code] || API_ERROR_CODES.UNKNOWN);
             }
             if (error instanceof APIError) throw error;
             throw new APIError(

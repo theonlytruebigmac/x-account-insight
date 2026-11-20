@@ -159,8 +159,10 @@ export function projectProfileUser(user) {
  * its previously observed hosts stale until replacement entities arrive.
  */
 export function mergeProjectedProfile(previous, patch) {
-    // A reused handle must not inherit the previous person's text or counters.
-    const base = normalizeAccountId(patch?.i) && patch.i !== previous?.i ? {} : previous;
+    // A reused handle must not inherit the previous person's text or counters. That is only
+    // provable when both sides name an ID: an earlier representation that simply lacked one
+    // (X sends the same user several ways) says nothing about who the handle belonged to.
+    const base = normalizeAccountId(patch?.i) && normalizeAccountId(previous?.i) && patch.i !== previous.i ? {} : previous;
     const next = { ...base, ...patch };
     for (const [text, fields] of [['b', ['l', 'L']], ['o', ['h', 'H']]]) {
         if (Object.hasOwn(patch, text) && patch[text] !== base?.[text]) {

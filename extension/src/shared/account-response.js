@@ -6,6 +6,22 @@ export class AccountResponseMismatchError extends Error {
 }
 
 /**
+ * A response that carries no account. Each case has its own lookup code so callers neither
+ * cache an empty record for weeks nor treat a passing X failure as a verdict:
+ *  - NETWORK_ERROR: X answered 200 with an `errors` envelope and no account (transient).
+ *  - UNAVAILABLE:   no usable account (suspended, restricted, or an empty result). This can
+ *                   be specific to the viewer, so it is remembered locally and never shared
+ *                   with the community cache as "not found" (that is reserved for a real 404).
+ */
+export class AccountResponseUnusableError extends Error {
+    constructor(code, message) {
+        super(message);
+        this.name = 'AccountResponseUnusableError';
+        this.code = code;
+    }
+}
+
+/**
  * Read the common filtering fields once. The page fallback intentionally omits
  * hovercard-only fields; callers retain their own transport/error classification.
  */
@@ -13,9 +29,19 @@ export function parseAccountResponse(data, requestedScreenName = null, { fullMet
     const user = data?.data?.user_result_by_screen_name?.result;
     const profile = user?.about_profile;
 
+    if (!user || typeof user !== 'object') {
+        if (Array.isArray(data?.errors) && data.errors.length > 0) {
+            throw new AccountResponseUnusableError('NETWORK_ERROR', 'X reported an error for this lookup');
+        }
+        throw new AccountResponseUnusableError('UNAVAILABLE', 'X returned no account for this handle');
+    }
+    if (user.__typename === 'UserUnavailable') {
+        throw new AccountResponseUnusableError('UNAVAILABLE', 'X will not show this account');
+    }
+
     // Never attach one account's observation to another. Missing handles retain
     // the existing permissive behavior for otherwise usable X responses.
-    const returnedScreenName = user?.core?.screen_name || null;
+    const returnedScreenName = typeof user.core?.screen_name === 'string' ? user.core.screen_name : null;
     if (requestedScreenName && returnedScreenName &&
         returnedScreenName.toLowerCase() !== requestedScreenName.toLowerCase()) {
         throw new AccountResponseMismatchError(returnedScreenName, requestedScreenName);

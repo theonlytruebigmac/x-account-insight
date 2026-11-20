@@ -130,14 +130,13 @@ export const TIMING = {
     RESIZE_DEBOUNCE_MS: 300,        // Debounce for window resize events
     SEARCH_DEBOUNCE_MS: 150,        // Reduced from 200ms for snappier search
     SIDEBAR_CHECK_MS: 500,          // Interval for sidebar check
-    SIDEBAR_TIMEOUT_MS: 10000,      // Max time to wait for sidebar
+    SIDEBAR_TIMEOUT_MS: 60000,      // Max time to wait for sidebar (X can take a while to render its nav)
     DELAYED_SCAN_MS: 1500,          // Reduced from 2000ms for faster initial load
     OBSERVER_RECONNECT_MS: 100,     // Delay before reconnecting observers
     SAVE_STATUS_DISPLAY_MS: 2000,   // How long to show save status
     CACHE_CLEAR_FEEDBACK_MS: 2000,  // How long to show cache cleared feedback
     RATE_LIMIT_TOAST_COOLDOWN_MS: 60000,  // Cooldown between rate limit toasts
     RATE_LIMIT_CHECK_MS: 10000,     // Interval for rate limit status check
-    KEEP_ALIVE_INTERVAL_MS: 20000,  // Service worker keep-alive interval
     NOT_FOUND_CLEANUP_INTERVAL_MS: 30000 // Reduced from 60s for faster memory cleanup
 };
 
@@ -146,7 +145,10 @@ export const TIMING = {
 export const CACHE_CONFIG = {
     EXPIRY_MS: 60 * 24 * 60 * 60 * 1000, // 60 days (location data rarely changes)
     MAX_ENTRIES: 50000, // LRU cache limit; compact records include source timestamp/provenance
-    SAVE_INTERVAL_MS: 60000 // Increased from 30s to reduce I/O overhead
+    // Must stay well under the ~30s idle window after which Chromium's MV3 worker is
+    // stopped: that browser does not deliver runtime.onSuspend to service workers, so this
+    // timer is the only thing that gets freshly looked-up accounts onto disk there.
+    SAVE_INTERVAL_MS: 15000
 };
 
 // API configuration

@@ -52,7 +52,7 @@ async function initialize() {
             await profileStore.load();
             await cloudCache.init();
 
-            updateCheck.init();
+            updateCheck.init().catch(() => {});
             updateCheck.checkNow().catch(error => console.warn('Update check failed:', error.message));
 
             const storedHeaders = headersStorage.get();
@@ -199,7 +199,7 @@ async function handleMessage(message, _sender) {
                 return await handleImportData(payload);
 
             case MESSAGE_TYPES.CHECK_FOR_UPDATE:
-                return { success: true, data: await updateCheck.checkNow() };
+                return { success: true, data: await updateCheck.checkNow({ force: true }) };
 
             case MESSAGE_TYPES.GET_UPDATE_STATUS:
                 return { success: true, data: await updateCheck.getStatus() };
@@ -480,7 +480,16 @@ function shouldAskCloudForRicher(screenName) {
     return true;
 }
 
+/** X's handle rule. Anything else can never be an account, so it is never looked up. */
+const VALID_SCREEN_NAME = /^[a-zA-Z0-9_]{1,15}$/;
+const invalidScreenName = () => ({
+    success: false, error: 'Invalid screen name', code: API_ERROR_CODES.NOT_FOUND
+});
+
 function handleFetchUserInfo(args) {
+    if (typeof args?.screenName !== 'string' || !VALID_SCREEN_NAME.test(args.screenName)) {
+        return Promise.resolve(invalidScreenName());
+    }
     const name = (args?.screenName || '').toLowerCase();
     const key = args?.pageContextRequired ? `${args.accountId || 'page'}:${args.needsAffiliation ? 1 : 0}:${name}` : name;
     if (!key) return _resolveUserInfo(args);
@@ -631,10 +640,14 @@ async function _resolveUserInfo({ screenName, csrfToken, pageContextRequired = f
         // Log the error for debugging
         console.warn(`❌ API error for @${screenName}:`, error.message, 'code:', error.code);
         
-        // Cache NOT_FOUND errors to avoid repeat lookups
+        // Cache NOT_FOUND errors to avoid repeat lookups. An unavailable account (suspended,
+        // restricted, empty result) is remembered here too, but it can be specific to this
+        // viewer, so only a real 404 is ever shared with the community cache.
         if (error.code === API_ERROR_CODES.NOT_FOUND) {
             cacheNotFound(screenName);
             cloudCache.contributeNotFound(screenName);
+        } else if (error.code === API_ERROR_CODES.UNAVAILABLE) {
+            cacheNotFound(screenName);
         }
 
         // Issue #14: drop stale stored headers on auth failure so freshly captured
@@ -669,6 +682,7 @@ async function _resolveUserInfo({ screenName, csrfToken, pageContextRequired = f
  * hovercard if auth fails.
  */
 async function handleFetchHovercardInfo({ screenName, csrfToken, pageContextRequired = false }) {
+    if (typeof screenName !== 'string' || !VALID_SCREEN_NAME.test(screenName)) return invalidScreenName();
     if (!pageContextRequired && isNotFoundCached(screenName)) {
         return {
             success: false,
@@ -719,6 +733,8 @@ async function handleFetchHovercardInfo({ screenName, csrfToken, pageContextRequ
         if (error.code === API_ERROR_CODES.NOT_FOUND) {
             cacheNotFound(screenName);
             cloudCache.contributeNotFound(screenName);
+        } else if (error.code === API_ERROR_CODES.UNAVAILABLE) {
+            cacheNotFound(screenName);
         }
         // Issue #14: drop stale stored headers on auth failure (the in-page fetch
         // fallback in the content script recovers the lookup).
@@ -915,6 +931,9 @@ async function handleSetBlockedSet(store, updatedType, { action, value, values }
             // Replace all in one mutation + one write
             await store.setAll(values || []);
             break;
+        default:
+            // An unrecognized action changed nothing, so it must not report success or broadcast.
+            throw new TypeError('Unknown filter action.');
     }
 
     // Capture data and revision together, before queuing asynchronous delivery.
@@ -1141,6 +1160,28 @@ async function handleSyncLocalToCloud() {
 }
 
 /**
+ * A backup file is not an observation made by this browser. Keep only the validated signals
+ * and the affiliation verdict, and mark the record as secondhand so it can be used locally
+ * but is never uploaded to the community cache as if it had just been seen. Anything else a
+ * file carries (profile metadata, cache bookkeeping) is dropped; a live fetch refills it.
+ */
+function restoredCacheEntry(entry) {
+    const restored = {
+        screenName: entry.screenName,
+        location: entry.location ?? null,
+        device: entry.device ?? null,
+        locationAccurate: entry.locationAccurate !== false,
+        timestamp: entry.timestamp,
+        fromCloud: true
+    };
+    if (affiliationWasChecked(entry.meta)) {
+        const name = String(entry.meta.affiliate?.name || entry.meta.affiliateUsername || '').slice(0, 100);
+        restored.meta = { partial: true, affiliateUsername: null, affiliate: name ? { name } : null };
+    }
+    return restored;
+}
+
+/**
  * Restore portable settings, filter lists and dated account-cache observations.
  */
 async function handleImportData(payload) {
@@ -1217,9 +1258,10 @@ async function handleImportData(payload) {
                     continue;
                 }
                 const keys = current?.keys || [entry.screenName];
+                const restored = restoredCacheEntry(entry);
                 let accepted = false;
                 for (const screenName of keys) {
-                    if (userCache.set(screenName, { ...entry, screenName })) accepted = true;
+                    if (userCache.set(screenName, { ...restored, screenName })) accepted = true;
                 }
                 if (accepted) {
                     currentAccounts.set(key, { keys, timestamp: entry.timestamp });

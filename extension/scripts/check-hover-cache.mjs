@@ -294,13 +294,17 @@ try {
     const functions = parseAst(source).body.filter(node => node.type === 'FunctionDeclaration' &&
         ['wantsRicherRecord', '_resolveUserInfo', 'handleFetchHovercardInfo'].includes(node.id.name));
     assert.equal(functions.length, 3, 'Exercise the actual production cloud and hover handlers');
-    const handlerSource = functions.map(node => source.slice(node.start, node.end)).join('\n');
+    // Module-level helpers the handlers rely on, taken from production like the functions.
+    const constants = parseAst(source).body.filter(node => node.type === 'VariableDeclaration' &&
+        ['VALID_SCREEN_NAME', 'invalidScreenName'].includes(node.declarations[0].id.name));
+    assert.equal(constants.length, 2, 'Exercise the production handle validation');
+    const handlerSource = [...constants, ...functions].map(node => source.slice(node.start, node.end)).join('\n');
     const handlers = ({ cache, lookup, api, contribute = () => {} }) => {
         const context = vm.createContext({
             userCache: cache, UserCacheStorage, Date, console, affiliationWasChecked,
             settings: { get: () => false }, blockedAffiliations: new Set(),
             isNotFoundCached: () => false, cacheNotFound: () => {},
-            headersStorage: { clear: async () => {} }, API_ERROR_CODES: {},
+            headersStorage: { clear: async () => {} }, API_ERROR_CODES: { NOT_FOUND: 'NOT_FOUND' },
             apiClient: { fetchUserInfo: api },
             cloudCache: { isEnabled: () => true, isConfigured: () => true, lookup, contribute }
         });

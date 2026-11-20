@@ -482,24 +482,28 @@ function setupEventListeners() {
         input.addEventListener('change', async () => {
             if (!settingsLoaded) return;
             input.disabled = true;
-            const value = key === 'hovercardTrigger' ? (input.checked ? 'click' : 'hover') : input.checked;
-            renderBadgePreview({ ...currentSettings, [key]: value });
-            await saveSettings({ [key]: value });
-            input.disabled = false;
+            try {
+                const value = key === 'hovercardTrigger' ? (input.checked ? 'click' : 'hover') : input.checked;
+                renderBadgePreview({ ...currentSettings, [key]: value });
+                await saveSettings({ [key]: value });
+            } finally {
+                input.disabled = false;
+            }
         });
     }
     elements.optBadgeSize.addEventListener('change', async () => {
         if (!settingsLoaded || !BADGE_SIZES.includes(elements.optBadgeSize.value)) return;
         const badgeSize = elements.optBadgeSize.value;
         elements.optBadgeSize.disabled = true;
-        renderBadgePreview({ ...currentSettings, badgeSize });
-        await saveSettings({ badgeSize });
-        elements.optBadgeSize.disabled = false;
+        try {
+            renderBadgePreview({ ...currentSettings, badgeSize });
+            await saveSettings({ badgeSize });
+        } finally {
+            elements.optBadgeSize.disabled = false;
+        }
     });
 
-    // No cloud-cache UI exists in this build (see constants.js), so these
-    // elements are null — guarded rather than deleted outright in case a
-    // future version of this project wants its own, separately-hosted cache.
+    // Guarded in case a build ships without the Community Cache panel.
     if (elements.optCloudCache) {
         elements.optCloudCache.addEventListener('change', async () => {
             const enabled = elements.optCloudCache.checked;
@@ -782,7 +786,7 @@ async function loadCloudApiKeyField() {
 }
 
 async function loadCloudCacheStatus(committedEnabled) {
-    // No cloud-cache UI in this build — see the note in setupEventListeners().
+    // The Community Cache panel can be absent from a build.
     if (!elements.optCloudCache) return;
     const retry = document.getElementById('cloud-status-retry');
     if (retry) retry.disabled = true;
@@ -1052,7 +1056,8 @@ async function loadUpdateStatus() {
 
 function renderUpdateStatus(info) {
     if (!info) return;
-    if (info.error) {
+    // A failed re-check keeps the last known result, so an available update still shows.
+    if (info.error && !info.updateAvailable) {
         elements.updateStatus.textContent = `Could not check for updates: ${info.error}`;
         return;
     }

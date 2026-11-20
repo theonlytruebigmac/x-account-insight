@@ -4,6 +4,25 @@ All notable changes to X Account Insight will be documented in this file.
 
 ## [Unreleased]
 
+### Fixes
+
+- **Update checks no longer hit GitHub on every background restart, or wake the extension every minute:** The result is reused for 12 hours (15 minutes after a failed check), the periodic alarm is created once instead of being re-armed at every start, and a failed check keeps the update it already found instead of clearing the update banner. Update links only ever point at this project's GitHub pages.
+- **A bad rate-limit value can no longer switch lookups off for good:** Cooldowns from X's headers, other tabs or storage are capped at one hour. A bad value already saved is discarded on startup.
+- **Accounts X can't show are no longer saved as empty records:** An answer that carries an error, a suspended or restricted account, or no account at all is no longer cached for 60 days as an account with no location. Temporary X errors are retried, and an unavailable account is remembered only on this device, never shared with the community cache as "not found".
+- **A short X outage no longer blanks accounts for the rest of the session:** Server errors (HTTP 5xx and timeouts) are retried later instead of being remembered as "no data" until you reload.
+- **Affiliation filters match what you type, not the reverse:** Blocking `fox news` no longer hides accounts affiliated with a one-letter organisation such as `X`. Part of an organisation's name is still enough.
+- **Looked-up accounts reach storage sooner:** The account cache is saved after 15 seconds, so Chrome stopping an idle background worker can no longer lose the most recent lookups.
+- **Safer backup import and community lookups:** Imported account records keep only their location, device and affiliation verdict and are never re-uploaded as your own observations. Only well-formed handles are sent in community-cache lookups.
+- **Tooltips show the real name:** Flag and device tooltips no longer display `&#39;` for an apostrophe, as in `Lao People's Democratic Republic` or `Cote d'Ivoire`.
+- **Less background work with Chat badges off:** The Chat badge module no longer scans every new part of the page for hidden roots while the feature is disabled.
+- **Settings text matches behaviour:** The Community Cache panel now says it is inactive until you add a key, in line with the privacy policy, instead of "off by default".
+- **Community Cache is strictly inert without a key:** Observations are no longer queued for upload before a key exists, so entering a key later cannot trigger a bulk upload of earlier browsing.
+- **More reliable sign-in capture:** X's request headers are recognised when passed as a list or on a `Request`, and on `twitter.com` as well as `x.com`. A CSRF cookie value containing `=` is read whole.
+- **Statistics and requests tolerate odd input:** A location such as `__proto__` is counted as an ordinary bucket. One in-flight lookup now serves every spelling of a handle, and a finished request can no longer remove a newer one for the same account.
+- **Cache recovery can't empty the cache:** If storage is full for another reason, the account cache sheds at most about 58% of itself instead of repeating until nothing is left.
+- **Clearer rejections:** An unknown filter action now reports failure instead of success, and a malformed handle is rejected before any lookup. A settings toggle can no longer be left disabled after an error.
+- **Smaller fixes:** Unreadable saved filter profiles are set aside and rebuilt from your current settings instead of breaking every request. The sidebar blocker link waits up to a minute for X to finish loading. Profile text and counts learned before an account ID arrives are no longer discarded when the ID shows up.
+
 ## [4.5.0] - 2026-11-19
 
 ### Improvements

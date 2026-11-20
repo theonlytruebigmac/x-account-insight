@@ -1,5 +1,11 @@
 /** Common handling for X lookup deadlines and server-directed cooldowns. */
 export const LOOKUP_TIMEOUT_MS = 8000;
+/**
+ * X's rate-limit windows are 15 minutes. No server header, stored value or page relay can
+ * hold lookups off for longer than this: a malformed or forged deadline would otherwise
+ * disable the extension for as long as it claimed, across restarts.
+ */
+export const MAX_RATE_LIMIT_WAIT_MS = 60 * 60 * 1000;
 export const RATE_LIMIT_STORAGE_KEY = 'x_api_rate_limit_reset';
 export const RATE_LIMIT_BUDGET_STORAGE_KEY = 'x_api_rate_limit_budget';
 /** Reserve this portion of the observed window for interactive account-card lookups. */
@@ -13,6 +19,11 @@ export const PAGE_LOOKUP_BURST = 3;
 export function lookupReserveRatio(budget, now = Date.now(), priority = false) {
     if (priority || !budget || !Number.isFinite(budget.resetTime)) return 0;
     return budget.resetTime - now > RATE_LIMIT_RESERVE_RELEASE_MS ? RATE_LIMIT_RESERVE_RATIO : 0;
+}
+
+/** Bound a server- or page-supplied deadline; anything not a finite time stays unknown (NaN). */
+export function clampRateLimitDeadline(deadline, now = Date.now()) {
+    return Number.isFinite(deadline) ? Math.min(deadline, now + MAX_RATE_LIMIT_WAIT_MS) : NaN;
 }
 
 export class RequestTimeoutError extends Error {
@@ -45,7 +56,7 @@ export function readRateLimitReset(headers, now = Date.now()) {
             : Date.parse(retry);
         if (Number.isFinite(deadline) && deadline > now) deadlines.push(deadline);
     }
-    return deadlines.length ? Math.max(...deadlines) : now + 60000;
+    return clampRateLimitDeadline(deadlines.length ? Math.max(...deadlines) : now + 60000, now);
 }
 
 /** Read the budget fields X exposes for an endpoint's current rate-limit window. */
@@ -61,11 +72,14 @@ export function readRateLimitBudget(headers, now = Date.now()) {
     if (!Number.isFinite(reset) || reset <= now ||
         !Number.isInteger(remaining) || remaining < 0 ||
         !Number.isInteger(limit) || limit < 1) return null;
-    return { resetTime: reset, remaining, limit };
+    return { resetTime: clampRateLimitDeadline(reset, now), remaining, limit };
 }
 
 /** Merge concurrent observations conservatively; an older response must not refill quota. */
 export function mergeRateLimitBudget(current, incoming, now = Date.now()) {
+    if (incoming && Number.isFinite(incoming.resetTime) && incoming.resetTime > now + MAX_RATE_LIMIT_WAIT_MS) {
+        incoming = { ...incoming, resetTime: clampRateLimitDeadline(incoming.resetTime, now) };
+    }
     if (!incoming || !Number.isFinite(incoming.resetTime) || incoming.resetTime <= now ||
         !Number.isInteger(incoming.remaining) || incoming.remaining < 0 ||
         !Number.isInteger(incoming.limit) || incoming.limit < 1) return current || null;
@@ -135,7 +149,7 @@ export class PacedLookupQueue {
 
     setRateLimit(resetTime) {
         if (!Number.isFinite(resetTime)) return;
-        this.resetTime = Math.max(this.resetTime, resetTime);
+        this.resetTime = Math.max(this.resetTime, clampRateLimitDeadline(resetTime));
         this.pump();
     }
 

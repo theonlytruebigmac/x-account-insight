@@ -111,6 +111,10 @@ export function createChatBadges({ getSettings, getViewer = readFollowingViewer,
         if (scopes.has(root) || scopes.size >= 30 || disposed) return;
         const scope = { ready: root === document, preparing: false, cleanupStyles: null, observer: null };
         scope.observer = new MutationObserver(mutations => {
+            // Nothing here is needed while Chat badges are off, and walking every added
+            // subtree for shadow roots is real work on X's constantly changing timeline.
+            // refresh() re-discovers every watched root when the feature is turned on.
+            if (!enabled) return;
             for (const mutation of mutations) {
                 for (const node of mutation.addedNodes) {
                     if (node.nodeType === 1 && !node.closest?.(OWN_UI)) discover(node);

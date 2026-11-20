@@ -23,6 +23,9 @@ function nextStateRevision(revision) {
 /**
  * User cache data storage with per-entry expiry tracking
  */
+/** Quota recovery sheds at most this many quarters of the cache (about 58% in total). */
+const MAX_QUOTA_EVICTIONS = 3;
+
 class UserCacheStorage {
     constructor() {
         // Each in-memory LRU value is an envelope `{ value, expiry }` so that the
@@ -261,7 +264,7 @@ class UserCacheStorage {
     }
 
     /** Resolve whether this snapshot was persisted; background retries remain automatic. */
-    async save(force = false) {
+    async save(force = false, evictions = 0) {
         this.pruneExpired();
         // Dirty-gated: skip the whole rebuild+write when nothing changed.
         if (!this.dirty && !force) return true;
@@ -303,10 +306,12 @@ class UserCacheStorage {
             // coldest quarter and write again immediately; only fall back to the timer if
             // that still fails or the error was something else (e.g. a transient write).
             if (/quota/i.test(error?.message || '')) {
-                const evicted = this.evictOldest(0.25);
-                console.warn(`⚠️ User cache exceeded storage quota. Evicted ${evicted} least-recently-used entries and retrying.`);
+                // Bounded: when something else fills the quota, shedding this cache can never
+                // fix it, and repeating would quietly empty the whole cache.
+                const evicted = evictions < MAX_QUOTA_EVICTIONS ? this.evictOldest(0.25) : 0;
+                console.warn(`⚠️ User cache exceeded storage quota. Evicted ${evicted} least-recently-used entries.`);
                 if (evicted > 0) {
-                    return this.save(true);
+                    return this.save(true, evictions + 1);
                 }
             }
 

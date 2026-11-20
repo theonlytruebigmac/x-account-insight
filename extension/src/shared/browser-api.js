@@ -138,6 +138,9 @@ const browserAPI = (() => {
             },
             alarms: chrome.alarms ? {
                 create: (name, alarmInfo) => chrome.alarms.create(name, alarmInfo),
+                get: name => new Promise(resolve => {
+                    chrome.alarms.get(name, alarm => resolve(alarm));
+                }),
                 clear: name => new Promise(resolve => {
                     chrome.alarms.clear(name, wasCleared => resolve(wasCleared));
                 }),
@@ -205,6 +208,7 @@ const browserAPI = (() => {
         },
         alarms: {
             create: () => {},
+            get: () => Promise.resolve(undefined),
             clear: () => Promise.resolve(false),
             onAlarm: { addListener: () => {} }
         }

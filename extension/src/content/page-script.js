@@ -16,14 +16,14 @@ import { FOLLOWING_LIMITS, isFollowingHandle, projectFollowingUser, readFollowin
 import { POST_RELATION_LIMITS, collectPostRelations } from '../shared/post-relations.js';
 import { CHAT_LIMITS, isChatUsersUrl, projectChatIdentities } from '../shared/chat-data.js';
 import { API_CONFIG } from '../shared/constants.js';
-import { generateFallbackHeaders } from '../shared/x-api-headers.js';
+import { generateFallbackHeaders, isGraphqlApiUrl, headersToObject } from '../shared/x-api-headers.js';
 
 (function() {
     'use strict';
 
     // Prevent multiple injections
-    if (window.__X_POSED_INJECTED__) return;
-    window.__X_POSED_INJECTED__ = true;
+    if (window.__XAI_INJECTED__) return;
+    window.__XAI_INJECTED__ = true;
 
     // Gate informational logging. Off by default so we don't spam the page
     // console in production; flip via window.XAI.enableDebug() (sets
@@ -48,7 +48,6 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
     const EVENT_SET_CHAT = 'xai-set-chat';
     const EVENT_CHAT_USERS = 'xai-chat-users';
     const EVENT_SHADOW_ROOT_READY = 'xai-shadow-root-ready';
-    const API_PATTERN = /x\.com\/i\/api\/graphql/;
     const ABOUT_QUERY_ID = 'XRqGa7EeokUU5kppkh13EA';
     const lookupQueue = new PacedLookupQueue({
         minIntervalMs: API_CONFIG.MIN_INTERVAL_MS,
@@ -391,7 +390,6 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
     }
 
     function hasHeader(headers, name) {
-        if (headers instanceof Headers) return headers.has(name);
         const wanted = name.toLowerCase();
         return Object.keys(headers || {}).some(key => key.toLowerCase() === wanted);
     }
@@ -401,17 +399,14 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
      */
     function sendHeaders(headers) {
         if (headersCaptured) return;
-        
-        if (!hasHeader(headers, 'authorization') || !hasHeader(headers, 'x-csrf-token')) {
+
+        // Headers, a plain object and [name, value] pairs are all valid request headers.
+        const headerObj = headersToObject(headers);
+        if (!headerObj || !hasHeader(headerObj, 'authorization') || !hasHeader(headerObj, 'x-csrf-token')) {
             return;
         }
 
         headersCaptured = true;
-
-        // Convert Headers object to plain object if needed
-        const headerObj = headers instanceof Headers 
-            ? Object.fromEntries(headers.entries()) 
-            : { ...headers };
         capturedHeaders = headerObj;
 
         // Dispatch custom event for content script
@@ -679,7 +674,7 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
         const postSnapshot = postRelationsResponseMatches(context?.postRelations, url, response.status) ? context.postRelations : null;
         if (chatResponseMatches(context?.chat, url, response.status)) relayChatIdentities(data, context.chat);
         // Never route a rejected friendship response through the profile walker.
-        if (snapshot || postSnapshot || (enrichmentEnabled && API_PATTERN.test(url))) tapPayload(url, data, via, snapshot, postSnapshot);
+        if (snapshot || postSnapshot || (enrichmentEnabled && isGraphqlApiUrl(url))) tapPayload(url, data, via, snapshot, postSnapshot);
     }
 
     const originalResponseJson = Response.prototype.json;
@@ -688,7 +683,7 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
         try {
             const url = this.url || '';
             const context = responseContexts.get(this);
-            if ((enrichmentEnabled && API_PATTERN.test(url)) ||
+            if ((enrichmentEnabled && isGraphqlApiUrl(url)) ||
                 followingResponseMatches(context?.following, url, this.status) ||
                 postRelationsResponseMatches(context?.postRelations, url, this.status) ||
                 chatResponseMatches(context?.chat, url, this.status)) {
@@ -715,14 +710,16 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
         let chatSnapshot = null;
         try {
             const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input?.url;
-            isGraphql = Boolean(url) && API_PATTERN.test(url);
+            isGraphql = Boolean(url) && isGraphqlApiUrl(url);
             followingSnapshot = snapshotFollowingRequest(url, init?.method || input?.method || 'GET');
             postRelationsSnapshot = snapshotPostRelationsRequest(url, init?.method || input?.method || 'GET');
             chatSnapshot = snapshotChatRequest(url, init?.method || input?.method || 'GET');
 
             if (isGraphql) {
                 harvestStats.graphqlFetches++;
-                if (init?.headers) sendHeaders(init.headers);
+                // fetch(new Request(...)) carries its headers on the request itself.
+                const headers = init?.headers ?? (typeof input === 'object' ? input?.headers : null);
+                if (headers) sendHeaders(headers);
             } else if (chatSnapshot) {
                 // A direct Chat visit may not have made a legacy GraphQL call.
                 // Reuse only this observed public-user request's normal credentials.
@@ -811,7 +808,7 @@ import { generateFallbackHeaders } from '../shared/x-api-headers.js';
     XMLHttpRequest.prototype.send = function() {
         try {
             const requestUrl = this._xAIUrl;
-            const isGraphql = requestUrl && API_PATTERN.test(requestUrl);
+            const isGraphql = requestUrl && isGraphqlApiUrl(requestUrl);
             const followingSnapshot = snapshotFollowingRequest(requestUrl, this._xAIMethod);
             const postRelationsSnapshot = snapshotPostRelationsRequest(requestUrl, this._xAIMethod);
             const chatSnapshot = snapshotChatRequest(requestUrl, this._xAIMethod || 'GET');

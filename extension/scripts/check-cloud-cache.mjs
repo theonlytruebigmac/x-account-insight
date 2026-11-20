@@ -255,6 +255,32 @@ check('bulk sync sends meta and the original observation time in server-sized ch
     assert.equal(result.skipped, 1);
 });
 
+check('without an API key nothing is queued for a later bulk upload', async () => {
+    const client = await freshClient();
+    client.apiKey = null;
+    await client.contribute('keyless', observed());
+    await client.contributeNotFound('keyless2');
+    stopTimers(client);
+    assert.equal(client.contributionQueue.size, 0);
+    client.apiKey = 'xic_test';
+    await client.contribute('keyed', observed());
+    stopTimers(client);
+    assert.equal(client.contributionQueue.size, 1);
+});
+
+check('lookup only ever sends well-formed handles in the request URL', async () => {
+    const client = await freshClient();
+    respond = () => ({ body: { results: {} } });
+    await client.fetchLookup(['valid_name']);
+    requests = [];
+    const answer = client.lookup(['good', 'bad,name', 'x&admin=1', 'a b', '../etc', '', 'toolonghandle_123456', 'Fine_One']);
+    await new Promise(resolve => setTimeout(resolve, 700));
+    await answer;
+    const lookups = requests.filter(request => request.url.includes('/lookup'));
+    assert.equal(lookups.length, 1);
+    assert.equal(new URL(lookups[0].url).searchParams.get('users'), 'good,fine_one');
+});
+
 let failed = 0;
 for (const [name, fn] of checks) {
     try {

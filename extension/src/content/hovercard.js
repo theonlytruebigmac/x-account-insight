@@ -510,6 +510,8 @@ function describeHovercardError(response) {
             return 'X rate limit reached. Try again in a moment.';
         case 'NOT_FOUND':
             return 'Account not found.';
+        case 'UNAVAILABLE':
+            return 'X isn’t showing this account (it may be suspended or restricted).';
         default:
             return response?.error || 'Failed to fetch details';
     }
