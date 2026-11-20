@@ -71,7 +71,7 @@ Then load the unpacked build:
 
 `npm run dev:chrome` / `npm run dev:firefox` watch and rebuild automatically; `npm run package` produces both store-format ZIPs under `extension/dist/`. Reload the extension and refresh any open X tabs after rebuilding.
 
-Source lives under `extension/src/` (content scripts, background service, shared modules, settings/popup UI, styles). `userscript/` is an older, non-feature-equivalent variant kept for reference.
+Source lives under `extension/src/` (content scripts, background service, shared modules, settings/popup UI, styles).
 
 <details>
 <summary><strong>Maintainers: enabling signed, auto-updating Firefox releases</strong></summary>

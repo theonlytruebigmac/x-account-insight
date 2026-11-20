@@ -151,7 +151,7 @@ function syncBadgeInfo(screenName, info, initialInfo) {
         JSON.stringify(info.meta) === JSON.stringify(initialInfo?.meta) &&
         metadataObservedAt(info) === metadataObservedAt(initialInfo))) return;
     try {
-        document.dispatchEvent(new CustomEvent('xposed:authoritative-info', {
+        document.dispatchEvent(new CustomEvent('insight:authoritative-info', {
             detail: { screenName, info }
         }));
     } catch { /* CustomEvent unsupported: non-fatal. */ }

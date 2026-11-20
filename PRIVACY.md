@@ -1,13 +1,13 @@
 # Privacy policy
 
-Last updated: 2026-11-08
+Last updated: 2026-11-20
 
-This policy describes the current browser-extension source of X-Posed: Account Location & Device Info. Versions available in browser stores may not include every feature described below. The separate iPhone and iPad app has its own [privacy policy](PRIVACY_iOS.md).
+This policy describes the current source of the X Account Insight browser extension. It is an independent fork of [x-account-location-device](https://github.com/xaitax/x-account-location-device) and is not operated by, or affiliated with, that project or its author. Builds you install from elsewhere may not include every feature described below.
 
 ## In brief
 
-- X-Posed reads account information and post elements on X to display labels and apply your filters locally. It does not block or mute accounts through X.
-- Community Cache is enabled by default on new installations. Updates preserve your existing choice. You can turn it off in Settings.
+- X Account Insight reads account information and post elements on X to display labels and apply your filters locally. It does not block or mute accounts through X.
+- Community Cache is enabled by default on new installations, but does nothing until you enter an API key issued by the cache's operator. Updates preserve your existing choice. You can turn it off in Settings.
 - Community lookups send the requested public account handles to the cache server. Contributions share a limited set of account metadata. Handles and account IDs are identifiable data, not anonymous records.
 - X authentication headers are stored locally and used only for requests to X. They are not sent to Community Cache.
 - Filter rules and filtering statistics stay local unless you choose to export rules in a backup. There is no usage-analytics or advertising code in the extension.
@@ -18,7 +18,7 @@ The extension reads usernames, account labels, post links and relevant page elem
 
 These are X's account-level labels, not a measurement of someone's current physical location or the device used for an individual post. A location warning is not proof that someone uses a VPN. Information from X or the community cache can be incomplete, stale or inaccurate.
 
-To make authenticated requests, the extension captures authorization and CSRF headers from X's requests and saves them in extension-local storage. It can also read X's `ct0` CSRF cookie from the X page context; the browser supplies applicable session cookies when making authenticated requests to X. X-Posed does not ask for or record your password. The saved headers are sensitive session-related data and are not included in configuration exports or community-cache requests.
+To make authenticated requests, the extension captures authorization and CSRF headers from X's requests and saves them in extension-local storage. It can also read X's `ct0` CSRF cookie from the X page context; the browser supplies applicable session cookies when making authenticated requests to X. X Account Insight does not ask for or record your password. The saved headers are sensitive session-related data and are not included in configuration exports or community-cache requests.
 
 ## Local settings, account cache and profile details
 
@@ -38,7 +38,7 @@ The account cache is keyed by handle. New cache writes retain a compact record o
 
 ## Community Cache
 
-When enabled, the extension contacts `https://x-posed-cache.xaitax.workers.dev`, hosted on Cloudflare Workers with Workers KV storage. It sends handles for account lookups and can contribute freshly obtained account information to help other users avoid repeated X requests. The server also provides aggregate cache totals.
+When enabled and an API key has been entered, the extension contacts the community cache server at `https://feed.syschimp.com`, a self-hosted [x-insight-cache](https://github.com/theonlytruebigmac/x-insight-cache) instance that stores records in a SQLite database. Without a key, nothing is sent to it. The extension sends handles for account lookups and can contribute freshly obtained account information to help other users avoid repeated X requests. The server also provides aggregate cache totals.
 
 Contributed records can contain:
 
@@ -52,13 +52,15 @@ Contributed records can contain:
 | Account creation date | Account age information, when available |
 | Numeric account ID | X's account identifier, when available |
 | Handle-change count | Number reported by X, when available |
-| Cache timestamp | Time recorded by the server when storing the entry |
+| Observation time | When the extension observed the data (never later than when the server received it) |
 
 Community contributions do not include passwords, X authorization or CSRF headers, X session cookies, post text, profile images, bios, follower/following counts, your follow relationships, filter rules or filtering-statistics records. Lookup requests nevertheless reveal which handles are being requested. The service is not an anonymous lookup system.
 
-Requests use HTTPS. Cloudflare receives network information, including the requesting IP address, and the worker uses that address for rate limiting. This policy does not promise that infrastructure providers keep no request logs or network metadata.
+Requests use HTTPS. The cache server uses your IP address, in memory, only to rate-limit requests; it is not written to the cache database. The server operator's reverse proxy or hosting provider may keep ordinary access logs. This policy does not promise that infrastructure providers keep no request logs or network metadata.
 
-Cloud records are configured to expire 60 days after a write. A later contribution can refresh a record. Turning off Community Cache stops new cloud lookups and contributions; requests already in progress may finish. It does not delete existing community records or prevent other users from contributing the same accounts. Clearing your local cache or uninstalling the extension does not delete community records either.
+The operator can issue separate API keys with their own labels and can see when each key was last used, along with hourly aggregate request counts. The server does not record which handles a given key looked up.
+
+Cloud records are deleted once the observation they describe is more than 60 days old (the operator can change this limit); a newer contribution replaces or refreshes a record. Confirmed not-found results are shared for 24 hours by default. Turning off Community Cache stops new cloud lookups and contributions; requests already in progress may finish. It does not delete existing community records or prevent other users from contributing the same accounts. Clearing your local cache or uninstalling the extension does not delete community records either.
 
 ## Local filtering statistics
 
@@ -70,7 +72,7 @@ These records are not uploaded or included in configuration exports. They remain
 
 ## Sharing, backups and external resources
 
-The Share feature creates an image locally from the selected post and its displayed account information. Rendering can load the account's profile image and post media from their existing image URLs. You choose whether to copy the result to your clipboard, download a PNG, open an X draft, or send it through your device's share menu. Opening an X draft sends the selected draft text and post link to X. Native sharing passes the selected content to the service you choose. X-Posed does not publish posts automatically or upload these images to Community Cache.
+The Share feature creates an image locally from the selected post and its displayed account information. Rendering can load the account's profile image and post media from their existing image URLs. You choose whether to copy the result to your clipboard, download a PNG, open an X draft, or send it through your device's share menu. Opening an X draft sends the selected draft text and post link to X. Native sharing passes the selected content to the service you choose. X Account Insight does not publish posts automatically or upload these images to Community Cache.
 
 **Export Data** creates a local file containing settings, filter rules, saved Always Show accounts and cached account information. It excludes saved authentication headers, observed follow and post relationships, the passive profile cache and filtering statistics. Backups and saved images can contain account information and personal filtering preferences; review them before sharing. Removing extension data does not remove files you already downloaded.
 
@@ -84,7 +86,10 @@ Support, donation, repository, browser-store and app links open external service
 |---|---|
 | `storage` | Save settings, filters, cached accounts and request headers locally |
 | `*://*.x.com/*` and `*://*.twitter.com/*` | Read relevant page information, add the interface and make requests to X |
-| `https://x-posed-cache.xaitax.workers.dev/*` | Make community-cache requests when enabled |
+| `https://feed.syschimp.com/*` | Make community-cache requests when enabled and a key is set |
+| `https://api.github.com/*` | Check this project's GitHub releases for a newer version (see below) |
+
+**Update checks.** About twice a day the extension asks GitHub's public API for this project's latest release so it can tell you when a newer version exists. The request contains no account handles or settings; GitHub receives the network information any web request carries, such as your IP address. The extension cannot install updates itself.
 
 The Firefox manifest also declares `websiteActivity` under its data-collection permissions. The extension does not request the browser's `cookies` permission; this does not mean it cannot use X's existing session as described above.
 
@@ -92,4 +97,4 @@ You can disable Community Cache in Settings, disable passive profile details in 
 
 ## Contact
 
-For questions about this policy, contact Alexander Hagenah through [@xaitax on X](https://x.com/xaitax) or [primepage.de](https://primepage.de).
+For questions about this policy, open an issue at [github.com/theonlytruebigmac/x-account-insight](https://github.com/theonlytruebigmac/x-account-insight/issues).

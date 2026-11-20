@@ -91,7 +91,7 @@ export default [
         output: {
             file: `${outputDir}/background.js`,
             format: 'iife',
-            name: 'XPosedBackground',
+            name: 'XInsightBackground',
             sourcemap: !production
         },
         plugins: [...plugins]
@@ -103,7 +103,7 @@ export default [
         output: {
             file: `${outputDir}/content.js`,
             format: 'iife',
-            name: 'XPosedContent',
+            name: 'XInsightContent',
             sourcemap: !production,
             inlineDynamicImports: true
         },
@@ -127,7 +127,7 @@ export default [
         output: {
             file: `${outputDir}/popup/popup.js`,
             format: 'iife',
-            name: 'XPosedPopup',
+            name: 'XInsightPopup',
             sourcemap: !production,
             inlineDynamicImports: true
         },
@@ -140,7 +140,7 @@ export default [
         output: {
             file: `${outputDir}/options/options.js`,
             format: 'iife',
-            name: 'XPosedOptions',
+            name: 'XInsightOptions',
             sourcemap: !production,
             inlineDynamicImports: true
         },

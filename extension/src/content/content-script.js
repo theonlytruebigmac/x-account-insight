@@ -733,7 +733,7 @@ function setupAuthoritativeInfoListener(current) {
         });
     };
 
-    current.listen(document, 'xposed:authoritative-info', onAuthoritativeInfo);
+    current.listen(document, 'insight:authoritative-info', onAuthoritativeInfo);
 }
 
 /**

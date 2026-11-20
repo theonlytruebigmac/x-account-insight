@@ -81,7 +81,7 @@ function environment() {
     const paints = []; const requests = []; const events = [];
     class ClockDate extends Date { static now() { return now; } }
     class Event { constructor(type, options = {}) { this.type = type; Object.assign(this, options); } }
-    document.addEventListener('xposed:authoritative-info', event => events.push(event.detail));
+    document.addEventListener('insight:authoritative-info', event => events.push(event.detail));
     const context = vm.createContext({
         window, document, LRUCache, CACHE_CONFIG, MESSAGE_TYPES, Date: ClockDate, CustomEvent: Event,
         resolveCardAvatar, getProfile: () => null,

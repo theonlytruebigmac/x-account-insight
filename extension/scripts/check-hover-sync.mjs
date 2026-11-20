@@ -42,7 +42,7 @@ function environment() {
     const current = {
         disposed: false,
         listen: (_target, type, callback) => {
-            assert.equal(type, 'xposed:authoritative-info');
+            assert.equal(type, 'insight:authoritative-info');
             listener = callback;
         }
     };

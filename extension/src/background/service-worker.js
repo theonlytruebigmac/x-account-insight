@@ -517,7 +517,7 @@ async function _resolveUserInfo({ screenName, csrfToken, pageContextRequired = f
     let localEntry = userCache.get(screenName) || null;
     if (localEntry) {
         if (!wantsRicherRecord(localEntry, needsAffiliation)) {
-            if (debug23) console.log(`[xposed#23] @${screenName} source=local loc=${localEntry?.location}`);
+            if (debug23) console.log(`[insight#23] @${screenName} source=local loc=${localEntry?.location}`);
             return {
                 success: true,
                 data: localEntry,
@@ -560,7 +560,7 @@ async function _resolveUserInfo({ screenName, csrfToken, pageContextRequired = f
                 const cloudIsRicher = !wantsRicherRecord(cloudData, needsAffiliation);
                 const best = (cloudIsRicher || !localEntry) ? cloudData : localEntry;
 
-                if (debug23) console.log(`[xposed#23] @${screenName} source=cloud loc=${cloudData?.location} ageMs=${Date.now() - (cloudData?.timestamp || 0)}`);
+                if (debug23) console.log(`[insight#23] @${screenName} source=cloud loc=${cloudData?.location} ageMs=${Date.now() - (cloudData?.timestamp || 0)}`);
 
                 // A source observation can expire while the lookup is in flight.
                 // Only serve it if the cache accepts its original deadline.
@@ -587,7 +587,7 @@ async function _resolveUserInfo({ screenName, csrfToken, pageContextRequired = f
     // rate limit — the hovercard is the path that enriches these records instead.
     localEntry = userCache.get(screenName) || null;
     if (localEntry) {
-        if (debug23) console.log(`[xposed#23] @${screenName} source=local (no richer cloud record)`);
+        if (debug23) console.log(`[insight#23] @${screenName} source=local (no richer cloud record)`);
         return {
             success: true,
             data: localEntry,
@@ -611,7 +611,7 @@ async function _resolveUserInfo({ screenName, csrfToken, pageContextRequired = f
             timestamp: Date.now(),
             fromCloud: false
         };
-        if (debug23) console.log(`[xposed#23] @${screenName} source=api loc=${data?.location}`);
+        if (debug23) console.log(`[insight#23] @${screenName} source=api loc=${data?.location}`);
 
         // Cache the result locally
         userCache.set(screenName, data);
